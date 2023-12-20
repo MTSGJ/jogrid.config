@@ -1,0 +1,83 @@
+#!/bin/bash
+#
+# opensim_money  (OpenSim Money Server: Gridmode)
+#                                                by Fumi.Iseki
+#
+
+PRGFL=/etc/init.d/opensim_money     	# 
+OPNSM=MoneyServer.exe					# プログラム名
+SCRNID=opensim_money                	#
+OSDIR=/usr/local/opensim_server 		# OpenSim をインストールしたディレクトリを指定
+MONO=/usr/local/bin/mono        		# mono へのパス
+PIDFL=/var/run/opensim_money_check.pid	#
+
+SLEEPTM=5                       		# リスタート時のスリープ時間
+CHKTM=30                            	# 監視間隔 (s)
+
+export PATH=/usr/local/bin:$PATH
+export MONO_THREADS_PER_CPU=1024
+
+
+
+start() {
+	tmux new -d -s $SCRNID  -c $OSDIR/bin "$MONO $OPTION $OPNSM"
+    echo "OpenSim Money Server Start."
+}     
+
+
+stop() {
+	tmux send-keys -t $SCRNID  C-m "quit" C-m 
+	echo "OpenSim Money Server Stoped."
+}
+
+
+kill_check() {
+    PID=`cat $PIDFL 2> /dev/null`
+    if [ "$PID" != "" ]; then
+         kill -9 $PID 2> /dev/null
+         rm -f $PIDFL
+    fi
+}
+
+
+start_check() {
+    kill_check
+    echo $$ >| $PIDFL
+    #
+    while [ "" = "" ]; do
+        CHECK=`ps aux|grep $OPNSM |grep mono|grep -v $SCRNID`
+        if [ "$CHECK" = "" ]; then
+            start
+        fi
+
+        sleep $CHKTM
+    done
+}
+
+
+
+case "$1" in
+  start)
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  stop)
+    kill_check
+    stop
+    ;;
+  restart|reload)
+    kill_check
+    stop
+    sleep $SLEEPTM
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  check)
+    start_check
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?

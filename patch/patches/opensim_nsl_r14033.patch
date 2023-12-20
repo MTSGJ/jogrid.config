@@ -1,0 +1,280 @@
+diff -Nur opensim-/OpenSim/ConsoleClient/ConsoleClient.cs opensim/OpenSim/ConsoleClient/ConsoleClient.cs
+--- opensim-/OpenSim/ConsoleClient/ConsoleClient.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/ConsoleClient/ConsoleClient.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -46,6 +46,8 @@
+         private static string m_User;
+         private static string m_Pass;
+         private static UUID m_SessionID;
++        private static bool m_end_flag;
++        //private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+ 
+         static int Main(string[] args)
+         {
+@@ -76,10 +78,12 @@
+ 
+             string pidFile = serverConfig.GetString("PIDFile", String.Empty);
+ 
+-            while (m_Server.Running)
++            m_end_flag = !m_Server.Running;
++            while (!m_end_flag)
+             {
+                 System.Threading.Thread.Sleep(500);
+                 // MainConsole.Instance.Prompt();
++                if (!m_Server.Running) m_end_flag = true;
+             }
+ 
+             if (pidFile != String.Empty)
+@@ -93,12 +97,27 @@
+         private static void SendCommand(string module, string[] cmd)
+         {
+             string sendCmd = "";
+-            string[] cmdlist = new string[cmd.Length - 1];
+ 
+-            sendCmd = cmd[0];
++            if (cmd.Length > 0)
++            {
++                sendCmd = cmd[0].Trim();
++                // shutdown or quit
++                if (sendCmd.StartsWith("quit"))
++                {
++                    if (sendCmd.Length==4)                m_end_flag = true;
++                    else if (sendCmd.Substring(4,1)==" ") m_end_flag = true;
++                    if (m_end_flag) return;
++                }
++                if (sendCmd.StartsWith("shutdown"))
++                {
++                    if (sendCmd.Length==8)                m_end_flag = true;
++                    else if (sendCmd.Substring(8,1)==" ") m_end_flag = true;
++                }
++            }
+ 
+             if (cmd.Length > 1)
+             {
++                string[] cmdlist = new string[cmd.Length - 1];
+                 Array.Copy(cmd, 1, cmdlist, 0, cmd.Length - 1);
+                 sendCmd += " \"" + String.Join("\" \"", cmdlist) + "\"";
+             }
+@@ -203,18 +222,33 @@
+                     continue;
+                 
+                 if (parts[2].StartsWith("+++") || parts[2].StartsWith("-++"))
++                {
+                     prompt = parts[2];
++                    if (prompt.StartsWith("+++"))
++                    {
++                        int len = prompt.Length;
++                        if (prompt.Substring(len-1, 1)=="#")
++                        {
++                            prompt += " ";
++                        }
++                        else if (len>=2 && prompt.Substring(len-2, 2)!="# ")
++                        {
++                            prompt += "# ";
++                        }
++                    }
++                }
+                 else
++                {
+                     MainConsole.Instance.Output(parts[2].Trim(), parts[1]);
++                }
+             }
+ 
+-
+             Requester.MakeRequest(requestUrl, requestData, ReadResponses);
+ 
+-            if (prompt.StartsWith("+++"))
+-                MainConsole.Instance.ReadLine(prompt.Substring(3), true, true);
+-            else if (prompt.StartsWith("-++"))
++            if (prompt.StartsWith("+++") || prompt.StartsWith("-++"))
++            {
+                 SendCommand(String.Empty, new string[] { MainConsole.Instance.ReadLine(prompt.Substring(3), false, true) });
++            }
+         }
+ 
+         public static void CommandReply(string requestUrl, string requestData, string replyData)
+diff -Nur opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs
+--- opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -179,19 +179,22 @@
+                 List<GridInstantMessage> msglist = SynchronousRestObjectPoster.BeginPostObject<UUID, List<GridInstantMessage>>(
+                         "POST", m_RestURL + "/RetrieveMessages/", client.AgentId);
+ 
+-                foreach (GridInstantMessage im in msglist)
++                if (msglist!=null)
+                 {
+-                    // client.SendInstantMessage(im);
+-
+-                    // Send through scene event manager so all modules get a chance
+-                    // to look at this message before it gets delivered.
+-                    //
+-                    // Needed for proper state management for stored group
+-                    // invitations
+-                    //
+-                    Scene s = FindScene(client.AgentId);
+-                    if (s != null)
+-                        s.EventManager.TriggerIncomingInstantMessage(im);
++                    foreach (GridInstantMessage im in msglist)
++                    {
++                        // client.SendInstantMessage(im);
++
++                        // Send through scene event manager so all modules get a chance
++                        // to look at this message before it gets delivered.
++                        //
++                        // Needed for proper state management for stored group
++                        // invitations
++                        //
++                        Scene s = FindScene(client.AgentId);
++                        if (s != null)
++                            s.EventManager.TriggerIncomingInstantMessage(im);
++                    }
+                 }
+             }
+         }
+diff -Nur opensim-/OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs opensim/OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs
+--- opensim-/OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -1019,7 +1019,9 @@
+ 
+             m_log.Debug("[WORLDMAP]: STORING MAPTILE IMAGE");
+ 
+-            m_scene.RegionInfo.RegionSettings.TerrainImageID = UUID.Random();
++            UUID terrainImageID = UUID.Random();
++            m_scene.RegionInfo.RegionSettings.TerrainImageID = terrainImageID;
++            m_scene.RegionInfo.lastMapUUID = terrainImageID;
+ 
+             AssetBase asset = new AssetBase(
+                 m_scene.RegionInfo.RegionSettings.TerrainImageID,
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Scene.cs opensim/OpenSim/Region/Framework/Scenes/Scene.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Scene.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Scene.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -609,7 +609,9 @@
+                 + " PhysPrim:" + m_physicalPrim.ToString();
+             */
+ 
+-            m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++			// by Fumi.Iseki
++            //m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++            m_simulatorVersion = simulatorVersion;
+ 
+             #region Region Config
+ 
+diff -Nur opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs
+--- opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -172,16 +172,30 @@
+             return false;
+         }
+ 
++
++        // Fumi.Iseki
++        // public Vector2 WorldExtents;
++        private Vector2 worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
++
++        public virtual Vector2 getWorldExtents
++        {
++            get { return worldExtents; }
++        }
++
+         public virtual void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
++            // Fumi.Iseki
++            worldExtents = new Vector2(extents.X, extents.Y);
+             return;
+         }
+ 
+         public virtual void UnCombine(PhysicsScene pScene)
+         {
+-            
++            // Fumi.Iseki
++            worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
+         }
+ 
++
+         /// <summary>
+         /// Queue a raycast against the physics scene.
+         /// The provided callback method will be called when the raycast is complete
+diff -Nur opensim-/OpenSim/Region/Physics/Meshing/Meshmerizer.cs opensim/OpenSim/Region/Physics/Meshing/Meshmerizer.cs
+--- opensim-/OpenSim/Region/Physics/Meshing/Meshmerizer.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Meshing/Meshmerizer.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -341,7 +341,15 @@
+                 bool mirror = ((primShape.SculptType & 128) != 0);
+                 bool invert = ((primShape.SculptType & 64) != 0);
+ 
+-                sculptMesh = new PrimMesher.SculptMesh((Bitmap)idata, sculptType, (int)lod, false, mirror, invert);
++                try {
++                    sculptMesh = new PrimMesher.SculptMesh((Bitmap)idata, sculptType, (int)lod, false, mirror, invert);
++                }
++                catch (Exception ex)
++                {
++                    m_log.Error("[PHYSICS]: PrimMesher.SculptMesh() is error.");
++                    m_log.Error("[PHYSICS]: " + ex.Message);
++                    return null;
++                }
+                 
+                 idata.Dispose();
+ 
+diff -Nur opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs
+--- opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2010-10-05 15:07:05.000000000 +0900
++++ opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2010-10-05 15:13:00.000000000 +0900
+@@ -1588,6 +1588,14 @@
+ 
+         #endregion
+ 
++
++        // Fumi.Iseki for called form OpenSim/Region/Framework/Scenes/ScenePresence
++        public override Vector2 getWorldExtents
++        {
++            get { return WorldExtents;}
++        }
++        
++
+         public override void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
+             m_worldOffset = offset;
+@@ -1616,7 +1624,7 @@
+ 
+ 
+                         if ((int)x > WorldExtents.X || (int)y > WorldExtents.Y ||
+-                            (int)x < 0.001f || (int)y < 0.001f)
++                            (int)x < 0 || (int)y < 0)
+                             return 0;
+ 
+                         x = x - offsetX;
+@@ -3048,6 +3056,37 @@
+                             if (actor.bad)
+                                 m_log.WarnFormat("[PHYSICS]: BAD Actor {0} in _characters list was not removed?", actor.m_uuid);
+                             actor.UpdatePositionAndVelocity();
++
++                            // by Fumi.Iseki  for falling at SIM boundary
++                            d.Vector3 vec = d.BodyGetPosition(actor.Body);
++
++                            if ((vec.Y<0.0f || vec.Y>=WorldExtents.Y || vec.X<0.0f || vec.X>=WorldExtents.X) && !actor.IsColliding && !actor.CollidingGround) {
++                                if      (vec.Y<0.0f) { vec.Y = 0.1f;}
++                                else if (vec.Y>=WorldExtents.Y) { vec.Y = WorldExtents.Y-0.1f;}
++                                if      (vec.X<0.0f) { vec.X = 0.1f;}
++                                else if (vec.X>=WorldExtents.X) { vec.X = WorldExtents.X-0.1f;}
++                                
++                                float height = GetTerrainHeightAtXY(vec.X, vec.Y);
++                                //m_log.ErrorFormat("=============== ({0}, {1}, {2}) => {3}", vec.X, vec.Y, vec.Z, height);
++                                if (actor.Flying) {
++                                    if (vec.Z  <  height + minimumGroundFlightOffset) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                    }
++                                }
++                                else {
++                                    if (vec.Z < height + actor.Size.Z) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                        actor.CollidingGround = true;
++                                    }
++                                }
++
++                                //actor.Position = new PhysicsVector(vec.X, vec.Y, vec.Z);
++                                d.BodySetPosition(actor.Body, vec.X, vec.Y, vec.Z);
++                            }
+                         }
+                     }
+                 }

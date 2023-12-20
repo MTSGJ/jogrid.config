@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# opensim_region (OpenSim Region Server) using tmux
+#                                                    by Fumi.Iseki
+#
+
+PRGFL=/etc/init.d/opensim_region    # このスクリプトのフルパス
+OPNSM=OpenSim.exe                   # 起動するプログラム
+OSDIR=/usr/local/opensim            # OpenSim をインストールしたディレクトリを指定
+MONO=/usr/local/bin/mono            # mono へのパス
+SCRNID=opensim_region
+PIDFL=/var/run/opensim_region_check.pid
+
+SLEEPTM=15                          # リスタート時のスリープ時間 (s)
+CHKTM=30                            # 監視間隔 (s)
+CNTMX=60                            # ハングアップ監視回数．判定時間は $CNTMX * $CHKTM (s)
+
+export PATH=/usr/local/bin:$PATH
+export MONO_THREADS_PER_CPU=512
+
+
+start() {
+    echo "OpenSim Region Server Start."
+    tmux new -d -s $SCRNID -c $OSDIR/bin "$MONO $OPTION $OPNSM"
+}       
+
+
+stop() {
+    tmux send-keys -t $SCRNID C-m "quit" C-m 
+    echo "OpenSim Region Server Stoped."
+}
+
+
+kill_check() {
+    PID=`cat $PIDFL 2> /dev/null`
+    if [ "$PID" != "" ]; then
+         kill -9 $PID 2> /dev/null
+         rm -f $PIDFL
+    fi
+}
+
+
+start_check() {
+    kill_check
+    echo $$ >| $PIDFL
+    PRVTM="0:00"
+    COUNT=0
+    #
+    while [ "" = "" ]; do
+        CHECK=`ps ax|grep tmux |grep $SCRNID`
+        if [ "$CHECK" = "" ]; then
+            start
+            PRVTM="0:00"
+            COUNT=0
+        else
+            CHECK=`ps ax|grep $MONO |grep $OPNSM |grep -v tmux`
+            EXETM=`echo $CHECK | awk -F" " '{print $4}'`
+            if [ "$PRVTM" = "$EXETM" ]; then
+                COUNT=`expr $COUNT + 1`
+                if [ $COUNT -ge $CNTMX ]; then
+                    tmux send-keys -t $SCRNID C-m "quit" C-m 
+      	            sleep $CHKTM
+                    PID=`echo $CHECK | awk -F" " '{print $1}'`
+                    kill -9 $PID
+                else
+                    tmux send-keys -t $SCRNID C-m "show stats" C-m 
+                    #tmux send-keys -t $SCRNID C-m "generate map" C-m 
+                fi
+            else
+                COUNT=0
+            fi
+            PRVTM=$EXETM
+        fi
+        #
+        sleep $CHKTM
+    done
+}
+
+
+case "$1" in
+  start)
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  stop)
+    kill_check
+    stop
+    ;;
+  restart|reload)
+    kill_check
+    stop
+    sleep $SLEEPTM
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  check)
+    start_check
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart|check}"
+    exit 1
+esac
+
+exit $?
+

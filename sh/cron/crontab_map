@@ -1,0 +1,2 @@
+#59 4 26-28 * * /usr/bin/test $( date +%w ) -eq 1 && /usr/local/bin/opensim_delete_map.sh > /dev/null 2>&1
+00 12 * * * /usr/local/bin/opensim_generatemap_tmux.sh > /dev/null 2>&1

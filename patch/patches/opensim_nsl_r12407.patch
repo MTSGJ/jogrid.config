@@ -1,0 +1,100 @@
+diff -Nur opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs
+--- opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2010-03-11 17:57:35.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2010-03-11 18:05:09.000000000 +0900
+@@ -172,16 +172,30 @@
+             return false;
+         }
+ 
++
++        // Fumi.Iseki
++        // public Vector2 WorldExtents;
++        private Vector2 worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
++
++        public virtual Vector2 getWorldExtents
++        {
++            get { return worldExtents; }
++        }
++
+         public virtual void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
++            // Fumi.Iseki
++            worldExtents = new Vector2(extents.X, extents.Y);
+             return;
+         }
+ 
+         public virtual void UnCombine(PhysicsScene pScene)
+         {
+-            
++            // Fumi.Iseki
++            worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
+         }
+ 
++
+         /// <summary>
+         /// Queue a raycast against the physics scene.
+         /// The provided callback method will be called when the raycast is complete
+diff -Nur opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs
+--- opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2010-03-11 17:57:35.000000000 +0900
++++ opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2010-03-11 18:05:09.000000000 +0900
+@@ -1588,6 +1588,14 @@
+ 
+         #endregion
+ 
++
++        // Fumi.Iseki for called form OpenSim/Region/Framework/Scenes/ScenePresence
++        public override Vector2 getWorldExtents
++        {
++            get { return WorldExtents;}
++        }
++        
++
+         public override void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
+             m_worldOffset = offset;
+@@ -1616,7 +1624,7 @@
+ 
+ 
+                         if ((int)x > WorldExtents.X || (int)y > WorldExtents.Y ||
+-                            (int)x < 0.001f || (int)y < 0.001f)
++                            (int)x < 0 || (int)y < 0)
+                             return 0;
+ 
+                         x = x - offsetX;
+@@ -3036,6 +3044,37 @@
+                             if (actor.bad)
+                                 m_log.WarnFormat("[PHYSICS]: BAD Actor {0} in _characters list was not removed?", actor.m_uuid);
+                             actor.UpdatePositionAndVelocity();
++
++                            // by Fumi.Iseki  for falling at SIM boundary
++                            d.Vector3 vec = d.BodyGetPosition(actor.Body);
++
++                            if ((vec.Y<0.0f || vec.Y>=WorldExtents.Y || vec.X<0.0f || vec.X>=WorldExtents.X) && !actor.IsColliding && !actor.CollidingGround) {
++                                if      (vec.Y<0.0f) { vec.Y = 0.1f;}
++                                else if (vec.Y>=WorldExtents.Y) { vec.Y = WorldExtents.Y-0.1f;}
++                                if      (vec.X<0.0f) { vec.X = 0.1f;}
++                                else if (vec.X>=WorldExtents.X) { vec.X = WorldExtents.X-0.1f;}
++                                
++                                float height = GetTerrainHeightAtXY(vec.X, vec.Y);
++                                //m_log.ErrorFormat("=============== ({0}, {1}, {2}) => {3}", vec.X, vec.Y, vec.Z, height);
++                                if (actor.Flying) {
++                                    if (vec.Z  <  height + minimumGroundFlightOffset) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                    }
++                                }
++                                else {
++                                    if (vec.Z < height + actor.Size.Z) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                        actor.CollidingGround = true;
++                                    }
++                                }
++
++                                //actor.Position = new PhysicsVector(vec.X, vec.Y, vec.Z);
++                                d.BodySetPosition(actor.Body, vec.X, vec.Y, vec.Z);
++                            }
+                         }
+                     }
+                 }

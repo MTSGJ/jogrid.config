@@ -1,0 +1,29 @@
+diff -Nur OpenSim-/Region/CoreModules/World/WorldMap/WorldMapModule.cs OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs
+--- OpenSim-/Region/CoreModules/World/WorldMap/WorldMapModule.cs	2015-11-27 18:50:19.373441622 +0900
++++ OpenSim/Region/CoreModules/World/WorldMap/WorldMapModule.cs	2015-11-27 18:51:35.690701885 +0900
+@@ -1545,9 +1545,13 @@
+             }
+ 
+             // bypass terrain image for large regions
++/*
++            by Fumi.Iseki
+             if (m_scene.RegionInfo.RegionSizeX <= Constants.RegionSize &&
+                     m_scene.RegionInfo.RegionSizeY <= Constants.RegionSize
+                     && mapbmp != null)
++*/
++            if (mapbmp != null)
+             {
+                 try
+                 {
+diff -Nur OpenSim-/Server/Base/ProtocolVersions.cs OpenSim/Server/Base/ProtocolVersions.cs
+--- OpenSim-/Server/Base/ProtocolVersions.cs	2015-11-27 18:50:19.514442104 +0900
++++ OpenSim/Server/Base/ProtocolVersions.cs	2015-11-27 18:52:59.215989754 +0900
+@@ -50,7 +50,7 @@
+         public readonly static int ClientProtocolVersionMax = 1;
+ 
+         // The range of acceptable clients in server-side handlers
+-        public readonly static int ServerProtocolVersionMin = 1;
++        public readonly static int ServerProtocolVersionMin = 0;
+         public readonly static int ServerProtocolVersionMax = 1;
+     }
+ }

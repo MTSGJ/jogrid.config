@@ -1,0 +1,145 @@
+diff -Nur opensim-/OpenSim/ConsoleClient/ConsoleClient.cs opensim/OpenSim/ConsoleClient/ConsoleClient.cs
+--- opensim-/OpenSim/ConsoleClient/ConsoleClient.cs	2012-03-01 16:51:24.000000000 +0900
++++ opensim/OpenSim/ConsoleClient/ConsoleClient.cs	2012-03-01 17:12:21.000000000 +0900
+@@ -47,6 +47,8 @@
+         private static string m_User;
+         private static string m_Pass;
+         private static UUID m_SessionID;
++        private static bool m_end_flag;
++		//private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+ 
+         static int Main(string[] args)
+         {
+@@ -77,10 +79,12 @@
+ 
+             string pidFile = serverConfig.GetString("PIDFile", String.Empty);
+ 
+-            while (m_Server.Running)
++            m_end_flag = !m_Server.Running;
++            while (!m_end_flag)
+             {
+                 System.Threading.Thread.Sleep(500);
+                 // MainConsole.Instance.Prompt();
++				if (!m_Server.Running) m_end_flag = true;
+             }
+ 
+             if (pidFile != String.Empty)
+@@ -94,12 +98,27 @@
+         private static void SendCommand(string module, string[] cmd)
+         {
+             string sendCmd = "";
+-            string[] cmdlist = new string[cmd.Length - 1];
+ 
+-            sendCmd = cmd[0];
++            if (cmd.Length > 0)
++            {
++                sendCmd = cmd[0].Trim();
++                // shutdown or quit
++                if (sendCmd.StartsWith("quit"))
++                {
++                    if (sendCmd.Length==4)                m_end_flag = true;
++                    else if (sendCmd.Substring(4,1)==" ") m_end_flag = true;
++                    if (m_end_flag) return;
++                }
++                if (sendCmd.StartsWith("shutdown"))
++                {
++                    if (sendCmd.Length==8)                m_end_flag = true;
++                    else if (sendCmd.Substring(8,1)==" ") m_end_flag = true;
++                }
++            }
+ 
+             if (cmd.Length > 1)
+             {
++                string[] cmdlist = new string[cmd.Length - 1];
+                 Array.Copy(cmd, 1, cmdlist, 0, cmd.Length - 1);
+                 sendCmd += " \"" + String.Join("\" \"", cmdlist) + "\"";
+             }
+@@ -204,18 +223,34 @@
+                     continue;
+                 
+                 if (parts[2].StartsWith("+++") || parts[2].StartsWith("-++"))
++                {
+                     prompt = parts[2];
++                    if (prompt.StartsWith("+++"))
++                    {
++                        int len = prompt.Length;
++                        if (prompt.Substring(len-1, 1)=="#")
++                        {
++                            prompt += " ";
++                        }
++                        else if (len>=2 && prompt.Substring(len-2, 2)!="# ")
++                        {
++                            prompt += "# ";
++                        }
++                    }
++                }
+                 else
++                {
+                     MainConsole.Instance.Output(parts[2].Trim(), parts[1]);
++                }
+             }
+ 
+ 
+             Requester.MakeRequest(requestUrl, requestData, ReadResponses);
+ 
+-            if (prompt.StartsWith("+++"))
+-                MainConsole.Instance.ReadLine(prompt.Substring(3), true, true);
+-            else if (prompt.StartsWith("-++"))
++            if (prompt.StartsWith("+++") || prompt.StartsWith("-++"))
++            {
+                 SendCommand(String.Empty, new string[] { MainConsole.Instance.ReadLine(prompt.Substring(3), false, true) });
++            }
+         }
+ 
+         public static void CommandReply(string requestUrl, string requestData, string replyData)
+diff -Nur opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs
+--- opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2012-03-01 16:51:24.000000000 +0900
++++ opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2012-03-01 17:20:58.000000000 +0900
+@@ -182,19 +182,21 @@
+                 if (msglist == null)
+                     m_log.WarnFormat("[OFFLINE MESSAGING]: WARNING null message list.");
+ 
+-                foreach (GridInstantMessage im in msglist)
++                if (msglist!=null)
+                 {
+-                    // client.SendInstantMessage(im);
+-
+-                    // Send through scene event manager so all modules get a chance
+-                    // to look at this message before it gets delivered.
+-                    //
+-                    // Needed for proper state management for stored group
+-                    // invitations
+-                    //
+-                    Scene s = FindScene(client.AgentId);
+-                    if (s != null)
+-                        s.EventManager.TriggerIncomingInstantMessage(im);
++                    foreach (GridInstantMessage im in msglist)
++                    {
++                        // client.SendInstantMessage(im);
++                        // Send through scene event manager so all modules get a chance
++                        // to look at this message before it gets delivered.
++                        //
++                        // Needed for proper state management for stored group
++                        // invitations
++                        //
++                        Scene s = FindScene(client.AgentId);
++                        if (s != null)
++                            s.EventManager.TriggerIncomingInstantMessage(im);
++                    }
+                 }
+             }
+         }
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Scene.cs opensim/OpenSim/Region/Framework/Scenes/Scene.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Scene.cs	2012-03-01 16:51:24.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Scene.cs	2012-03-01 17:20:58.000000000 +0900
+@@ -624,7 +624,9 @@
+ 
+             m_physics_enabled = !RegionInfo.RegionSettings.DisablePhysics;
+ 
+-            m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++            // by Fumi.Iseki
++            //m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++            m_simulatorVersion = simulatorVersion;
+ 
+             #region Region Config
+ 

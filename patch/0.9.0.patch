@@ -1,0 +1,110 @@
+diff -Nur OpenSim-/Region/CoreModules/Scripting/LSLHttp/UrlModule.cs OpenSim/Region/CoreModules/Scripting/LSLHttp/UrlModule.cs
+--- OpenSim-/Region/CoreModules/Scripting/LSLHttp/UrlModule.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Region/CoreModules/Scripting/LSLHttp/UrlModule.cs	2018-04-22 14:16:09.705172258 +0900
+@@ -384,8 +384,8 @@
+                         string responseBody = body;
+ 
+                         // If we have no OpenID from built-in browser, disable this
+-                        if (!urlData.requests[request].allowResponseType)
+-                            urlData.requests[request].responseType = "text/plain";
++                        //if (!urlData.requests[request].allowResponseType)
++                        //    urlData.requests[request].responseType = "text/plain";
+ 
+                         if (urlData.requests[request].responseType.Equals("text/plain"))
+                         {
+diff -Nur OpenSim-/Region/CoreModules/World/Land/LandManagementModule.cs OpenSim/Region/CoreModules/World/Land/LandManagementModule.cs
+--- OpenSim-/Region/CoreModules/World/Land/LandManagementModule.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Region/CoreModules/World/Land/LandManagementModule.cs	2018-04-22 14:16:09.705172258 +0900
+@@ -511,6 +511,10 @@
+             if (avatar.IsChildAgent)
+                 return;
+ 
++            // by Fumi.Hax
++            ILandObject over = GetLandObject(avatar.AbsolutePosition.X, avatar.AbsolutePosition.Y);
++            SendLandUpdate(avatar, over);
++
+             if ( m_allowedForcefulBans && m_showBansLines)
+                 SendOutNearestBanLine(avatar.ControllingClient);
+         }
+diff -Nur OpenSim-/Region/OptionalModules/Avatar/XmlRpcGroups/XmlRpcGroupsServicesConnectorModule.cs OpenSim/Region/OptionalModules/Avatar/XmlRpcGroups/XmlRpcGroupsServicesConnectorModule.cs
+--- OpenSim-/Region/OptionalModules/Avatar/XmlRpcGroups/XmlRpcGroupsServicesConnectorModule.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Region/OptionalModules/Avatar/XmlRpcGroups/XmlRpcGroupsServicesConnectorModule.cs	2018-04-22 14:16:09.706172261 +0900
+@@ -1147,7 +1147,8 @@
+ 
+             using (Stream stream = request.GetRequestStream())
+             {
+-                using (XmlTextWriter xml = new XmlTextWriter(stream, Encoding.ASCII))
++                //using (XmlTextWriter xml = new XmlTextWriter(stream, Encoding.ASCII))
++                using (XmlTextWriter xml = new XmlTextWriter(stream, Encoding.UTF8))	// Fumi.Hax
+                 {
+                     _serializer.Serialize(xml, this);
+                     xml.Flush();
+diff -Nur OpenSim-/Region/OptionalModules/UserStatistics/WebStatsModule.cs OpenSim/Region/OptionalModules/UserStatistics/WebStatsModule.cs
+--- OpenSim-/Region/OptionalModules/UserStatistics/WebStatsModule.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Region/OptionalModules/UserStatistics/WebStatsModule.cs	2018-04-22 14:16:09.707172263 +0900
+@@ -144,7 +144,9 @@
+                 m_scenes.Add(scene);
+                 updateLogMod = m_scenes.Count * 2;
+ 
+-                m_simstatsCounters.Add(scene.RegionInfo.RegionID, new USimStatsData(scene.RegionInfo.RegionID));
++                // Fumi.Hax
++                if (!m_simstatsCounters.ContainsKey(scene.RegionInfo.RegionID)) 
++                    m_simstatsCounters.Add(scene.RegionInfo.RegionID, new USimStatsData(scene.RegionInfo.RegionID));
+ 
+                 scene.EventManager.OnRegisterCaps += OnRegisterCaps;
+                 scene.EventManager.OnDeregisterCaps += OnDeRegisterCaps;
+diff -Nur OpenSim-/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs
+--- OpenSim-/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2018-04-22 14:16:09.711172272 +0900
+@@ -4807,7 +4807,8 @@
+             m_host.AddScriptLPS(1);
+             Vector3 av3 = Util.Clip(color, 0.0f, 1.0f);
+             byte[] data;
+-            data = Util.StringToBytes256(text);
++            //data = Util.StringToBytes256(text);
++            data = Util.StringToBytes(text, 254);
+             text = Util.UTF8.GetString(data);
+             m_host.SetText(text, av3, Util.Clip((float)alpha, 0.0f, 1.0f));
+         }
+diff -Nur OpenSim-/Server/Handlers/Freeswitch/FreeswitchServerConnector.cs OpenSim/Server/Handlers/Freeswitch/FreeswitchServerConnector.cs
+--- OpenSim-/Server/Handlers/Freeswitch/FreeswitchServerConnector.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Server/Handlers/Freeswitch/FreeswitchServerConnector.cs	2018-04-22 14:16:09.711172272 +0900
+@@ -105,7 +105,8 @@
+                 if (s.Trim() != "")
+                 {
+                     string [] nvp = s.Split(new Char [] {'='});
+-                    bodyParams.Add(HttpUtility.UrlDecode(nvp[0]), HttpUtility.UrlDecode(nvp[1]));
++                    if (!bodyParams.ContainsKey(nvp[0]))  // Fumi.Hax
++                        bodyParams.Add(HttpUtility.UrlDecode(nvp[0]), HttpUtility.UrlDecode(nvp[1]));
+                 }
+             }
+ 
+diff -Nur OpenSim-/Services/HypergridService/GatekeeperService.cs OpenSim/Services/HypergridService/GatekeeperService.cs
+--- OpenSim-/Services/HypergridService/GatekeeperService.cs	2017-08-16 02:31:06.000000000 +0900
++++ OpenSim/Services/HypergridService/GatekeeperService.cs	2018-04-22 14:16:09.712172275 +0900
+@@ -578,7 +578,24 @@
+                 return false;
+             }
+ 
+-            return string.Equals(uri.GetLeftPart(UriPartial.Authority), m_Uri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase) ;
++            // Fumi.Hax
++            if (string.Equals(uri.GetLeftPart(UriPartial.Authority), m_Uri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)) return true;
++            if (uri.Port!=m_Uri.Port) return false;
++
++            System.Net.IPHostEntry ent1 = System.Net.Dns.GetHostEntry(uri.Host);
++            System.Net.IPHostEntry ent2 = System.Net.Dns.GetHostEntry(m_Uri.Host);
++            System.Net.IPAddress[] ips1 = ent1.AddressList;
++            System.Net.IPAddress[] ips2 = ent2.AddressList;
++
++            for (int i=0; i<ips1.Length; i++) {
++                string ipstr = ips1[i].ToString();
++                for (int j=0; j<ips2.Length; j++) {
++                    if (ipstr==ips2[j].ToString()) return true;
++                }
++            }
++
++            return false;
++            //return string.Equals(uri.GetLeftPart(UriPartial.Authority), m_Uri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase) ;
+         }
+ 
+         #endregion

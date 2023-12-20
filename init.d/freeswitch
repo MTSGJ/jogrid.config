@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+
+PRG=/usr/local/freeswitch/bin/freeswitch
+
+
+case "$1" in
+  start)
+    $PRG -nc
+    ;;
+  stop)
+    $PRG -stop
+    ;;
+  restart|reload)
+    $PRG -stop
+    sleep 1
+    $PRG -nc
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?
+

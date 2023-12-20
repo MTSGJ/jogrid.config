@@ -1,0 +1,11 @@
+#!/bin/bash
+
+git branch
+BRNCH=`git branch| grep ^*|awk -F" " '{print $2}'`
+
+if [ "$BRNCH" != "master" ]; then
+    git config --global user.email root@jogeid.net
+    git commit -a -m "dummy"
+    git checkout master
+    #git pull
+fi

@@ -1,0 +1,132 @@
+diff -Nur opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs opensim/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs
+--- opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2010-01-16 14:05:34.000000000 +0800
++++ opensim/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2010-01-16 14:05:02.000000000 +0800
+@@ -1052,6 +1052,74 @@
+             throw new SelfDeleteException();
+         }
+ 
++        // Fumi.Iseki
++        public void llGroundSet(int i, int j, double height)
++        {
++            m_host.AddScriptLPS(1);
++
++            if (World.Permissions.CanTerraformLand(m_host.OwnerID, new Vector3(i, j, 0)))
++            {
++                if (i>=World.Heightmap.Width)  i = World.Heightmap.Width - 1;
++                else if (i<0) i = 0;
++                if (j>=World.Heightmap.Height) j = World.Heightmap.Height - 1;
++                else if (j<0) j = 0;
++                World.Heightmap[i, j] = height;
++            }
++        }
++
++        // Fumi.Iseki
++        public void llGroundFill(double height)
++        {
++            m_host.AddScriptLPS(1);
++
++            int i, j;
++            for (j=0; j<World.Heightmap.Height; j++) {
++                for (i=0; i<World.Heightmap.Width; i++) {
++                    if (World.Permissions.CanTerraformLand(m_host.OwnerID, new Vector3(i, j, 0)))
++                    {
++                        World.Heightmap[i, j] = height;
++                    }
++                }
++            }
++        }
++
++        // Fumi.Iseki
++        public void llGroundSetByString(string str)
++        {
++            m_host.AddScriptLPS(1);
++
++            string[] buf = str.TrimEnd('\n').Split('\n');
++
++            int jj = 0;
++            foreach(string rec in buf) {
++                int j = World.Heightmap.Height - jj - 1;
++                if (j<0) break;
++                string line = rec.Trim(' ');
++
++                int i = 0;
++                foreach(string itm in System.Text.RegularExpressions.Regex.Split(line, " {1,}")) {
++                    if (i>=World.Heightmap.Width) break;
++                    if (World.Permissions.CanTerraformLand(m_host.OwnerID, new Vector3(i, j, 0))) {
++                        World.Heightmap[i, j] = double.Parse(itm);
++                    }
++                    i++;
++                }
++                jj++;
++            }
++        }
++
++        // Fumi.Iseki
++        public void llGroundUpdate()
++        {
++            m_host.AddScriptLPS(1);
++
++            ITerrainModule tm = m_ScriptEngine.World.RequestModuleInterface<ITerrainModule>();
++            if (tm != null)
++            {
++                tm.TaintTerrain();
++            }
++        }
++
+         public LSL_Float llGround(LSL_Vector offset)
+         {
+             m_host.AddScriptLPS(1);
+diff -Nur opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Interface/ILSL_Api.cs opensim/OpenSim/Region/ScriptEngine/Shared/Api/Interface/ILSL_Api.cs
+--- opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Interface/ILSL_Api.cs	2010-01-16 14:05:34.000000000 +0800
++++ opensim/OpenSim/Region/ScriptEngine/Shared/Api/Interface/ILSL_Api.cs	2010-01-16 14:05:02.000000000 +0800
+@@ -199,7 +199,11 @@
+         LSL_Vector llGroundContour(LSL_Vector offset);
+         LSL_Vector llGroundNormal(LSL_Vector offset);
+               void llGroundRepel(double height, int water, double tau);
++              void llGroundSet(int x, int y, double height);  // Fumi.Iseki
++              void llGroundFill(double height);               // Fumi.Iseki
++              void llGroundSetByString(string str);           // Fumi.Iseki
+         LSL_Vector llGroundSlope(LSL_Vector offset);
++              void llGroundUpdate();                          // Fumi.Iseki
+         LSL_String llHTTPRequest(string url, LSL_List parameters, string body);
+               void llHTTPResponse(LSL_Key id, int status, string body);
+         LSL_String llInsertString(string dst, int position, string src);
+diff -Nur opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Runtime/LSL_Stub.cs opensim/OpenSim/Region/ScriptEngine/Shared/Api/Runtime/LSL_Stub.cs
+--- opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Runtime/LSL_Stub.cs	2010-01-16 14:05:34.000000000 +0800
++++ opensim/OpenSim/Region/ScriptEngine/Shared/Api/Runtime/LSL_Stub.cs	2010-01-16 14:05:02.000000000 +0800
+@@ -854,11 +854,35 @@
+             m_LSL_Functions.llGroundRepel(height, water, tau);
+         }
+ 
++        // Fumi.Iseki
++        public void llGroundSet(int x, int y, double height)
++        {
++            m_LSL_Functions.llGroundSet(x, y, height);
++        }
++
++        // Fumi.Iseki
++        public void llGroundFill(double height)
++        {
++            m_LSL_Functions.llGroundFill(height);
++        }
++
++        // Fumi.Iseki
++        public void llGroundSetByString(string str)
++        {
++            m_LSL_Functions.llGroundSetByString(str);
++        }
++
+         public LSL_Vector llGroundSlope(LSL_Vector offset)
+         {
+             return m_LSL_Functions.llGroundSlope(offset);
+         }
+ 
++        // Fumi.Iseki
++        public void llGroundUpdate()
++        {
++            m_LSL_Functions.llGroundUpdate();
++        }
++
+         public LSL_String llHTTPRequest(string url, LSL_List parameters, string body)
+         {
+             return m_LSL_Functions.llHTTPRequest(url, parameters, body);

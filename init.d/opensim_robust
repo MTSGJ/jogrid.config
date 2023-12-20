@@ -1,0 +1,100 @@
+#!/bin/bash
+#
+# opensim_robust  (OpenSim Robust Server: Gridmode)
+#                                                by Fumi.Iseki
+#
+
+PRGFL=/etc/init.d/opensim_robust		#
+OPNSM=Robust.exe						# プログラム名
+SCRNID=opensim_robust					#
+ONFFL=/home/apache/htdocs/on_robust		#
+OSDIR=/usr/local/opensim_server 		# OpenSim をインストールしたディレクトリを指定
+MONO=/usr/local/bin/mono        		# mono へのパス
+PIDFL=/var/run/opensim_robust_check.pid #
+
+SLEEPTM=5                       	# リスタート時のスリープ時間
+CHKTM=30                            # 監視間隔 (s)
+MEMSHLD=95                          # 再起動する場合のメモリの占有率 %
+MAPEXPIRE=14                        # この日以前の maptile を削除
+
+export PATH=/usr/local/bin:$PATH
+export MONO_THREADS_PER_CPU=1024
+export MONO_DNS=1
+
+
+start() {
+    cd $OSDIR/bin
+	find maptiles -type f -mtime +$MAPEXPIRE | xargs /bin/rm > /dev/null 2>&1 
+	#
+    echo "OpenSim R.O.B.U.S.T. Server Start."
+	tmux new -d -s $SCRNID -c $OSDIR/bin "$MONO $OPTION $OPNSM" \; pipe-pane "cat -u|sed -u 's/\[41\;..\?H//g'|sed -u 's/\[42\;..\?H//g'|sed -u 's/R\.O\.B\.U\.S\.T\.# //g'|sed -u 's/^ *//g' >| /tmp/robust.log"
+    echo 1 >| $ONFFL
+}     
+
+
+stop() {
+    echo 0 >| $ONFFL
+	tmux send-keys  -t $SCRNID C-m "quit" C-m
+	echo "OpenSim R.O.B.U.S.T. Server Stoped."
+}
+
+
+kill_check() {
+    PID=`cat $PIDFL 2> /dev/null`
+    if [ "$PID" != "" ]; then
+         kill -9 $PID 2> /dev/null
+         rm -f $PIDFL
+    fi
+}
+
+
+start_check() {
+    kill_check
+    echo $$ >| $PIDFL
+    #
+    while [ "" = "" ]; do
+        CHECK=`ps aux|grep $OPNSM |grep mono|grep -v $SCRNID`
+        if [ "$CHECK" = "" ]; then
+            start
+        else
+            MEMRT=`echo $CHECK | awk -F" " '{print $4}' | awk -F"." '{print $1}'`
+            if [ "$MEMRT" -gt "$MEMSHLD" ]; then
+                stop
+                sleep $CHKTM
+                PID=`echo $CHECK | awk -F" " '{print $1}'`
+                kill -9 $PID
+            fi
+		fi
+		
+        sleep $CHKTM
+    done
+}
+
+
+
+case "$1" in
+  start)
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  stop)
+    kill_check
+    stop
+    ;;
+  restart|reload)
+    kill_check
+    stop
+    sleep $SLEEPTM
+    start
+    /bin/bash $PRGFL check &
+    ;;
+  check)
+    start_check
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?
+

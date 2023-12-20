@@ -1,0 +1,1171 @@
+diff -Nur opensim-/OpenSim/ApplicationPlugins/RemoteController/RemoteAdminPlugin.cs opensim/OpenSim/ApplicationPlugins/RemoteController/RemoteAdminPlugin.cs
+--- opensim-/OpenSim/ApplicationPlugins/RemoteController/RemoteAdminPlugin.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/ApplicationPlugins/RemoteController/RemoteAdminPlugin.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -572,6 +572,7 @@
+                                 scene.RegionInfo.RegionLocX, scene.RegionInfo.RegionLocY));
+ 
+                     region.ExternalHostName = (string) requestData["external_address"];
++                    region.ExternalIPAddress = (string) requestData["external_address"];  // Fumi.Iseki
+ 
+                     string masterFirst = (string) requestData["region_master_first"];
+                     string masterLast = (string) requestData["region_master_last"];
+diff -Nur opensim-/OpenSim/Client/Linden/LLStandaloneLoginService.cs opensim/OpenSim/Client/Linden/LLStandaloneLoginService.cs
+--- opensim-/OpenSim/Client/Linden/LLStandaloneLoginService.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Client/Linden/LLStandaloneLoginService.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -142,9 +142,15 @@
+         protected override bool PrepareLoginToRegion(
+             RegionInfo regionInfo, UserProfileData user, LoginResponse response, IPEndPoint remoteClient)
+         {
+-            IPEndPoint endPoint = regionInfo.ExternalEndPoint;
+-            response.SimAddress = endPoint.Address.ToString();
+-            response.SimPort = (uint)endPoint.Port;
++            // by Fumi.Iseki for NAT
++            IPAddress extip = NetworkUtil.GetIPfromString(regionInfo.ExternalIPAddress);
++            IPAddress simip = NetworkUtil.GetEffectiveIP(remoteClient.Address, regionInfo.InternalEndPoint.Address, extip, null);
++
++            //IPEndPoint endPoint = regionInfo.ExternalEndPoint;
++            //response.SimAddress = endPoint.Address.ToString();
++            //response.SimPort = (uint)endPoint.Port;
++            response.SimAddress = simip.ToString();
++            response.SimPort = (uint)regionInfo.InternalEndPoint.Port;
+             response.RegionX = regionInfo.RegionLocX;
+             response.RegionY = regionInfo.RegionLocY;
+ 
+diff -Nur opensim-/OpenSim/Data/MSSQL/MSSQLGridData.cs opensim/OpenSim/Data/MSSQL/MSSQLGridData.cs
+--- opensim-/OpenSim/Data/MSSQL/MSSQLGridData.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Data/MSSQL/MSSQLGridData.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -412,12 +412,16 @@
+             // Region Server
+             retval.regionDataURI = reader["regionDataURI"].ToString();
+             retval.regionOnline = false; // Needs to be pinged before this can be set.
+-            retval.serverIP = reader["serverIP"].ToString();
++            // Fumi.Iseki
++            retval.serverIPadr = reader["serverIP"].ToString();
+             retval.serverPort = Convert.ToUInt32(reader["serverPort"]);
+             retval.serverURI = reader["serverURI"].ToString();
+             retval.httpPort = Convert.ToUInt32(reader["serverHttpPort"].ToString());
+             retval.remotingPort = Convert.ToUInt32(reader["serverRemotingPort"].ToString());
+ 
++            // Fumi.Iseki
++            retval.serverName = retval.serverURI.Split(new char[] { '/', ':' })[3];
++
+             // Location
+             retval.regionLocX = Convert.ToUInt32(reader["locX"].ToString());
+             retval.regionLocY = Convert.ToUInt32(reader["locY"].ToString());
+@@ -479,7 +483,7 @@
+                 command.Parameters.Add(database.CreateParameter("regionSecret", profile.regionSecret));
+                 command.Parameters.Add(database.CreateParameter("regionSendKey", profile.regionSendKey));
+                 command.Parameters.Add(database.CreateParameter("regionDataURI", profile.regionDataURI));
+-                command.Parameters.Add(database.CreateParameter("serverIP", profile.serverIP));
++                command.Parameters.Add(database.CreateParameter("serverIP", profile.serverIPadr));    // by Fumi.Iseki
+                 command.Parameters.Add(database.CreateParameter("serverPort", profile.serverPort));
+                 command.Parameters.Add(database.CreateParameter("serverURI", profile.serverURI));
+                 command.Parameters.Add(database.CreateParameter("locX", profile.regionLocX));
+@@ -545,7 +549,7 @@
+                 command.Parameters.Add(database.CreateParameter("regionSecret", profile.regionSecret));
+                 command.Parameters.Add(database.CreateParameter("regionSendKey", profile.regionSendKey));
+                 command.Parameters.Add(database.CreateParameter("regionDataURI", profile.regionDataURI));
+-                command.Parameters.Add(database.CreateParameter("serverIP", profile.serverIP));
++                command.Parameters.Add(database.CreateParameter("serverIP", profile.serverIPadr));    // by Fumi.Iseki
+                 command.Parameters.Add(database.CreateParameter("serverPort", profile.serverPort));
+                 command.Parameters.Add(database.CreateParameter("serverURI", profile.serverURI));
+                 command.Parameters.Add(database.CreateParameter("locX", profile.regionLocX));
+diff -Nur opensim-/OpenSim/Data/MySQL/MySQLManager.cs opensim/OpenSim/Data/MySQL/MySQLManager.cs
+--- opensim-/OpenSim/Data/MySQL/MySQLManager.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Data/MySQL/MySQLManager.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -361,12 +361,16 @@
+                 // Region Server
+                 retval.regionDataURI = (string) reader["regionDataURI"];
+                 retval.regionOnline = false; // Needs to be pinged before this can be set.
+-                retval.serverIP = (string) reader["serverIP"];
++                // Fumi.Iseki
++                retval.serverIPadr = (string) reader["serverIP"];
+                 retval.serverPort = (uint) reader["serverPort"];
+                 retval.serverURI = (string) reader["serverURI"];
+                 retval.httpPort = Convert.ToUInt32(reader["serverHttpPort"].ToString());
+                 retval.remotingPort = Convert.ToUInt32(reader["serverRemotingPort"].ToString());
+ 
++                // Fumi.Iseki
++                retval.serverName = retval.serverURI.Split(new char[] { '/', ':' })[3];
++
+                 // Location
+                 retval.regionLocX = Convert.ToUInt32(reader["locX"].ToString());
+                 retval.regionLocY = Convert.ToUInt32(reader["locY"].ToString());
+@@ -971,7 +975,7 @@
+             parameters["?regionSecret"] = regiondata.regionSecret.ToString();
+             parameters["?regionSendKey"] = regiondata.regionSendKey.ToString();
+             parameters["?regionDataURI"] = regiondata.regionDataURI.ToString();
+-            parameters["?serverIP"] = regiondata.serverIP.ToString();
++            parameters["?serverIP"] = regiondata.serverIPadr.ToString();       // Fumi.Iseki
+             parameters["?serverPort"] = regiondata.serverPort.ToString();
+             parameters["?serverURI"] = regiondata.serverURI.ToString();
+             parameters["?locX"] = regiondata.regionLocX.ToString();
+diff -Nur opensim-/OpenSim/Data/RegionProfileData.cs opensim/OpenSim/Data/RegionProfileData.cs
+--- opensim-/OpenSim/Data/RegionProfileData.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Data/RegionProfileData.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -25,6 +25,16 @@
+  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
++
++/*
++by Fumi.Iseki
++
++  serverIP -> serverName
++  serverIPadr is new created.
++*/
++
++
++
+ using System;
+ using System.Collections;
+ using Nwc.XmlRpc;
+@@ -77,7 +87,8 @@
+         /// <summary>
+         /// Information about the server that the region is currently hosted on
+         /// </summary>
+-        public string serverIP = String.Empty;
++        public string serverName = String.Empty;    // by Fumi.Iseki
++        public string serverIPadr = String.Empty;
+         public uint serverPort;
+         public string serverURI = String.Empty;
+ 
+@@ -188,10 +199,16 @@
+             get { return regionOnline; }
+             set { regionOnline = value; }
+         }
+-        public string ServerIP
++        public string ServerIPadr
++        {
++            get { return serverIPadr; }
++            set { serverIPadr = value; }
++        }
++        // by Fumi.Iseki
++        public string ServerName
+         {
+-            get { return serverIP; }
+-            set { serverIP = value; }
++            get { return serverName; }
++            set { serverName = value; }
+         }
+         public uint ServerPort
+         {
+@@ -298,7 +315,8 @@
+ 
+         public RegionInfo ToRegionInfo()
+         {
+-            return RegionInfo.Create(UUID, regionName, regionLocX, regionLocY, serverIP, httpPort, serverPort, remotingPort, serverURI);
++            // by Fumi.Iseki for NAT
++            return RegionInfo.Create(UUID, regionName, regionLocX, regionLocY, serverName, serverIPadr, httpPort, serverPort, remotingPort, serverURI);
+         }
+ 
+         public static RegionProfileData FromRegionInfo(RegionInfo regionInfo)
+@@ -308,13 +326,15 @@
+                 return null;
+             }
+ 
++            // by Fumi.Iseki
+             return Create(regionInfo.RegionID, regionInfo.RegionName, regionInfo.RegionLocX,
+-                          regionInfo.RegionLocY, regionInfo.ExternalHostName,
++                          regionInfo.RegionLocY, regionInfo.ExternalHostName, regionInfo.ExternalIPAddress,
+                           (uint) regionInfo.ExternalEndPoint.Port, regionInfo.HttpPort, regionInfo.RemotingPort,
+                           regionInfo.ServerURI, regionInfo.AccessLevel);
+         }
+ 
+-        public static RegionProfileData Create(UUID regionID, string regionName, uint locX, uint locY, string externalHostName, uint regionPort, uint httpPort, uint remotingPort, string serverUri, byte access)
++        // by Fumi.Iseki for NAT
++        public static RegionProfileData Create(UUID regionID, string regionName, uint locX, uint locY, string externalHostName, string externalIP, uint regionPort, uint httpPort, uint remotingPort, string serverUri, byte access)
+         {
+             RegionProfileData regionProfile;
+             regionProfile = new RegionProfileData();
+@@ -323,7 +343,12 @@
+             regionProfile.regionHandle =
+                 Utils.UIntsToLong((regionProfile.regionLocX * Constants.RegionSize),
+                                   (regionProfile.regionLocY*Constants.RegionSize));
+-            regionProfile.serverIP = externalHostName;
++            // by Fumi.Iseki
++            //regionProfile.serverIP = externalHostName;
++            if (externalIP==null || externalIP=="0.0.0.0") regionProfile.serverIPadr = externalHostName;
++            else regionProfile.serverIPadr = externalIP;
++            regionProfile.serverName = externalHostName;
++
+             regionProfile.serverPort = regionPort;
+             regionProfile.httpPort = httpPort;
+             regionProfile.remotingPort = remotingPort;
+diff -Nur opensim-/OpenSim/Data/RegionProfileServiceProxy.cs opensim/OpenSim/Data/RegionProfileServiceProxy.cs
+--- opensim-/OpenSim/Data/RegionProfileServiceProxy.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Data/RegionProfileServiceProxy.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -58,7 +58,10 @@
+             {
+                 uint locX = Convert.ToUInt32((string)responseData["region_locx"]);
+                 uint locY = Convert.ToUInt32((string)responseData["region_locy"]);
+-                string externalHostName = (string)responseData["sim_ip"];
++                // by Fumi.Iseki
++                string externalIP = (string)responseData["sim_ip"];
++                string externalHostName = (string)responseData["sim_name"];
++
+                 uint simPort = Convert.ToUInt32((string)responseData["sim_port"]);
+                 uint httpPort = Convert.ToUInt32((string)responseData["http_port"]);
+                 uint remotingPort = Convert.ToUInt32((string)responseData["remoting_port"]);
+@@ -67,7 +70,7 @@
+                 string regionName = (string)responseData["region_name"];
+                 byte access = Convert.ToByte((string)responseData["access"]);
+ 
+-                simData = RegionProfileData.Create(regionID, regionName, locX, locY, externalHostName, simPort, httpPort, remotingPort, serverUri, access);
++                simData = RegionProfileData.Create(regionID, regionName, locX, locY, externalHostName, externalIP, simPort, httpPort, remotingPort, serverUri, access);
+             }
+ 
+             return simData;
+diff -Nur opensim-/OpenSim/Data/SQLite/SQLiteManager.cs opensim/OpenSim/Data/SQLite/SQLiteManager.cs
+--- opensim-/OpenSim/Data/SQLite/SQLiteManager.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Data/SQLite/SQLiteManager.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -128,10 +128,14 @@
+                 // Region Server
+                 retval.regionDataURI = (string) reader["regionDataURI"];
+                 retval.regionOnline = false; // Needs to be pinged before this can be set.
+-                retval.serverIP = (string) reader["serverIP"];
++                // Fumi.Iseki
++                retval.serverIPadr = (string) reader["serverIP"];
+                 retval.serverPort = (uint) reader["serverPort"];
+                 retval.serverURI = (string) reader["serverURI"];
+ 
++                // Fumi.Iseki
++                retval.serverName = retval.serverURI.Split(new char[] { '/', ':' })[3];
++
+                 // Location
+                 retval.regionLocX = (uint) ((int) reader["locX"]);
+                 retval.regionLocY = (uint) ((int) reader["locY"]);
+@@ -186,7 +190,7 @@
+             parameters["regionRecvKey"] = profile.regionRecvKey;
+             parameters["regionSendKey"] = profile.regionSendKey;
+             parameters["regionDataURI"] = profile.regionDataURI;
+-            parameters["serverIP"] = profile.serverIP;
++            parameters["serverIP"] = profile.serverIPadr;     // by Fumi.Iseki
+             parameters["serverPort"] = profile.serverPort.ToString();
+             parameters["serverURI"] = profile.serverURI;
+             parameters["locX"] = profile.regionLocX.ToString();
+diff -Nur opensim-/OpenSim/Framework/Communications/Clients/GridClient.cs opensim/OpenSim/Framework/Communications/Clients/GridClient.cs
+--- opensim-/OpenSim/Framework/Communications/Clients/GridClient.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Framework/Communications/Clients/GridClient.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -238,7 +238,10 @@
+ 
+                 uint regX = Convert.ToUInt32((string)responseData["region_locx"]);
+                 uint regY = Convert.ToUInt32((string)responseData["region_locy"]);
+-                string externalHostName = (string)responseData["sim_ip"];
++                // by Fumi.Iseki for NAT
++                string externalIP = (string)responseData["sim_ip"];
++                string externalHostName = (string)responseData["sim_name"];
++
+                 uint simPort = Convert.ToUInt32(responseData["sim_port"]);
+                 string regionName = (string)responseData["region_name"];
+                 UUID regionID = new UUID((string)responseData["region_UUID"]);
+@@ -257,7 +260,8 @@
+                 // string externalUri = (string) responseData["sim_uri"];
+ 
+                 //IPEndPoint neighbourInternalEndPoint = new IPEndPoint(IPAddress.Parse(internalIpStr), (int) port);
+-                regionInfo = RegionInfo.Create(regionID, regionName, regX, regY, externalHostName, httpPort, simPort, remotingPort, simURI);
++                // Fumi.Iseki
++                regionInfo = RegionInfo.Create(regionID, regionName, regX, regY, externalHostName, externalIP, httpPort, simPort, remotingPort, simURI);
+             }
+             catch (Exception e)
+             {
+@@ -368,12 +372,15 @@
+         {
+             uint regX = Convert.ToUInt32((string)responseData[prefix + "region_locx"]);
+             uint regY = Convert.ToUInt32((string)responseData[prefix + "region_locy"]);
++            // by Fumi.Iseki
++            string internalName  = (string)responseData[prefix + "sim_name"];
+             string internalIpStr = (string)responseData[prefix + "sim_ip"];
+             uint port = Convert.ToUInt32(responseData[prefix + "sim_port"]);
+ 
+             IPEndPoint neighbourInternalEndPoint = new IPEndPoint(Util.GetHostFromDNS(internalIpStr), (int)port);
+ 
+-            RegionInfo regionInfo = new RegionInfo(regX, regY, neighbourInternalEndPoint, internalIpStr);
++            // by Fumi.Iseki
++            RegionInfo regionInfo = new RegionInfo(regX, regY, neighbourInternalEndPoint, internalName, internalIpStr);
+             regionInfo.RemotingPort = Convert.ToUInt32((string)responseData[prefix + "remoting_port"]);
+             regionInfo.RemotingAddress = internalIpStr;
+ 
+diff -Nur opensim-/OpenSim/Framework/Communications/Tests/LoginServiceTests.cs opensim/OpenSim/Framework/Communications/Tests/LoginServiceTests.cs
+--- opensim-/OpenSim/Framework/Communications/Tests/LoginServiceTests.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Framework/Communications/Tests/LoginServiceTests.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -56,6 +56,7 @@
+         private string m_firstName = "Adam";
+         private string m_lastName = "West";
+         private string m_regionExternalName = "localhost";
++        private string m_regionExternalIP = "127.0.0.1";    // Fumi.Iseki
+ 
+         private IPEndPoint m_capsEndPoint;
+         private TestCommunicationsManager m_commsManager;
+@@ -73,7 +74,9 @@
+             m_regionConnector = new TestLoginToRegionConnector();
+             m_testScene = SceneSetupHelpers.SetupScene(m_commsManager, "");
+ 
+-            m_regionConnector.AddRegion(new RegionInfo(42, 43, m_capsEndPoint, m_regionExternalName));
++            // Fumi.Iseki
++            //m_regionConnector.AddRegion(new RegionInfo(42, 43, m_capsEndPoint, m_regionExternalName));
++            m_regionConnector.AddRegion(new RegionInfo(42, 43, m_capsEndPoint, m_regionExternalName, m_regionExternalIP));
+ 
+             //IInventoryService m_inventoryService = new MockInventoryService();
+ 
+diff -Nur opensim-/OpenSim/Framework/NetworkUtil.cs opensim/OpenSim/Framework/NetworkUtil.cs
+--- opensim-/OpenSim/Framework/NetworkUtil.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Framework/NetworkUtil.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -56,6 +56,114 @@
+             get { return m_disabled; }
+         }
+ 
++
++
++        // Fumi.Iseki
++        public static IPAddress GetIPfromString(string str)
++        {
++            IPAddress ip = null;
++            if (IPAddress.TryParse(str, out ip))
++            {
++                return ip;
++            }
++
++            foreach (IPAddress host in Dns.GetHostAddresses(str))
++            {
++                if (host.AddressFamily==AddressFamily.InterNetwork)
++                {
++                    return host;
++                }
++            }
++            return ip;
++        }
++
++
++
++        // Fumi.Iseki
++        public static IPEndPoint GetEffectiveIP(IPAddress viewer, IPEndPoint internalPoint, IPEndPoint externalPoint, IPEndPoint myExternalPoint)
++        {
++            IPAddress ip;
++
++            if (myExternalPoint==null)
++            {
++                ip = GetEffectiveIP(viewer, internalPoint.Address, externalPoint.Address, null);
++            }
++            else {
++                ip = GetEffectiveIP(viewer, internalPoint.Address, externalPoint.Address, myExternalPoint.Address);
++            }
++            return new IPEndPoint(ip.Address, internalPoint.Port); 
++        }
++
++
++
++        // Fumi.Iseki
++        public static IPAddress GetEffectiveIP(IPAddress viewer, IPAddress internalIP, IPAddress externalIP, IPAddress myExternalIP)
++        {
++            foreach (IPAddress host in Dns.GetHostAddresses(Dns.GetHostName()))
++            {
++                if (host.Equals(viewer) && host.AddressFamily==AddressFamily.InterNetwork) 
++                {
++                    m_log.Info("[NetworkUtil.GetEffectiveIP] Localhost user detected, sending them '" + host.ToString() + "'");
++                    return host;
++                }
++            }
++
++            string externalip = externalIP.ToString();
++            if (externalip==null || externalip=="0.0.0.0")
++            {
++                m_log.Info("[NetworkUtil.GetEffectiveIP] Local LAN user detected (type 0), sending them '" + internalIP.ToString() + "'");
++                return internalIP;
++            }
++
++            if (viewer.Equals(externalIP))
++            {
++                m_log.Info("[NetworkUtil.GetEffectiveIP] Local LAN user detected (type 1), sending them '" + internalIP.ToString() + "'");
++                return internalIP;
++            }
++
++            if (myExternalIP!=null && !externalIP.Equals(myExternalIP))
++            {
++                m_log.Info("[NetworkUtil.GetEffectiveIP] Remote LAN user detected (type 0), sending them '" + externalIP.ToString() + "'");
++                return externalIP;
++            }
++
++
++            // Check for same LAN segment
++            foreach (KeyValuePair<IPAddress, IPAddress> subnet in m_subnets) 
++            {
++                byte[] subnetBytes = subnet.Value.GetAddressBytes();
++                byte[] localBytes  = subnet.Key.GetAddressBytes();
++                byte[] destBytes   = viewer.GetAddressBytes();
++
++                if (subnetBytes.Length != destBytes.Length || subnetBytes.Length != localBytes.Length) return internalIP;
++
++                bool valid = true;
++                for (int i = 0; i < subnetBytes.Length; i++) 
++                {
++                    if ((localBytes[i] & subnetBytes[i]) != (destBytes[i] & subnetBytes[i])) 
++                    {
++                        valid = false;
++                        break;
++                    }
++                }
++                if (subnet.Key.AddressFamily != AddressFamily.InterNetwork) {
++                    valid = false;
++                }
++
++                if (valid) 
++                {
++                    m_log.Info("[NetworkUtil.GetEffectiveIP] Local LAN user detected (type 2), sending them '" + internalIP.ToString() + "'");
++                    return internalIP;
++                }
++            }
++
++            // Otherwise, return outside address
++            m_log.Info("[NetworkUtil.GetEffectiveIP] Remote LAN user detected (type 1), sending them '" + externalIP.ToString() + "'");
++            return externalIP;
++        }
++
++
++
+         // IPv4Address, Subnet
+         static readonly Dictionary<IPAddress,IPAddress> m_subnets = new Dictionary<IPAddress, IPAddress>();
+ 
+@@ -190,9 +298,17 @@
+                     {
+                         if (address.Address.AddressFamily == AddressFamily.InterNetwork)
+                         {
+-                            if (address.IPv4Mask != null)
++                            // Fumi.Iseki for mono
++                            try
++                            {
++                                if (address.IPv4Mask != null)
++                                {
++                                    m_subnets.Add(address.Address, address.IPv4Mask);
++                                }
++                            }
++                            catch (NotImplementedException)
+                             {
+-                                m_subnets.Add(address.Address, address.IPv4Mask);
++                                m_subnets.Add(address.Address, IPAddress.Parse("255.255.255.0"));
+                             }
+                         }
+                     }
+diff -Nur opensim-/OpenSim/Framework/RegionInfo.cs opensim/OpenSim/Framework/RegionInfo.cs
+--- opensim-/OpenSim/Framework/RegionInfo.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Framework/RegionInfo.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -79,6 +79,7 @@
+         protected bool Allow_Alternate_Ports;
+         public bool m_allow_alternate_ports;
+         protected string m_externalHostName;
++        protected string m_externalIPAddress;     // Fumi.Iseki
+         protected IPEndPoint m_internalEndPoint;
+         protected uint? m_regionLocX;
+         protected uint? m_regionLocY;
+@@ -168,13 +169,16 @@
+             configMember.performConfigurationRetrieve();
+         }
+ 
+-        public RegionInfo(uint regionLocX, uint regionLocY, IPEndPoint internalEndPoint, string externalUri)
++        // by Fumi.Iseki for NAT    added externalIP
++        public RegionInfo(uint regionLocX, uint regionLocY, IPEndPoint internalEndPoint, string externalUri, string externalIP)
+         {
+             m_regionLocX = regionLocX;
+             m_regionLocY = regionLocY;
+ 
+             m_internalEndPoint = internalEndPoint;
+             m_externalHostName = externalUri;
++            if (externalIP==null) externalIP = "0.0.0.0";
++            m_externalIPAddress = externalIP;
+         }
+ 
+         public RegionInfo()
+@@ -280,13 +284,26 @@
+         {
+             get
+             {
++                // by Fumi.Iseki for NAT
++                if (m_externalIPAddress!=null && m_externalIPAddress!="0.0.0.0")
++                {
++                    IPAddress ip = NetworkUtil.GetIPfromString(m_externalIPAddress);
++                    return new IPEndPoint(ip, m_internalEndPoint.Port);
++                }                    
++ 
+                 // Old one defaults to IPv6
+                 //return new IPEndPoint(Dns.GetHostAddresses(m_externalHostName)[0], m_internalEndPoint.Port);
+ 
+-                IPAddress ia = null;
++                // by Fumi.Iseki for NAT
++                //IPAddress ia = null;
+                 // If it is already an IP, don't resolve it - just return directly
+-                if (IPAddress.TryParse(m_externalHostName, out ia))
++                //if (IPAddress.TryParse(m_externalHostName, out ia))
++                IPAddress ia = NetworkUtil.GetIPfromString(m_externalHostName);
++                if (ia!=null)
++                {
++                    m_externalIPAddress = ia.ToString();
+                     return new IPEndPoint(ia, m_internalEndPoint.Port);
++                }
+ 
+                 // Reset for next check
+                 ia = null;
+@@ -314,7 +331,17 @@
+                 return new IPEndPoint(ia, m_internalEndPoint.Port);
+             }
+ 
+-            set { m_externalHostName = value.ToString(); }
++            set 
++            {
++                m_externalHostName = value.ToString(); 
++
++                // by Fumi.Iseki for NAT 
++                IPAddress ia = NetworkUtil.GetIPfromString(m_externalHostName);
++                if (ia!=null)
++                {
++                    m_externalIPAddress = ia.ToString();
++                }
++            }
+         }
+ 
+         public string ExternalHostName
+@@ -323,6 +350,13 @@
+             set { m_externalHostName = value; }
+         }
+ 
++        // by Fumi.Iseki for NAT
++        public string ExternalIPAddress
++        {
++            get { return m_externalIPAddress; }
++            set { m_externalIPAddress = value; }
++        }
++
+         public IPEndPoint InternalEndPoint
+         {
+             get { return m_internalEndPoint; }
+@@ -442,6 +476,10 @@
+                 address = IPAddress.Parse(MainConsole.Instance.CmdPrompt("Internal IP address", "0.0.0.0"));
+                 config.Set("InternalAddress", address.ToString());
+             }
++            
++            // Fumi.Iseki
++            if (address.ToString()=="0.0.0.0") address = NetworkUtil.GetIPfromString("");
++
+ 
+             int port;
+ 
+@@ -488,6 +526,27 @@
+                 m_externalHostName = externalName;
+ 
+ 
++            // External IP for NAT
++            // by Fumi.Iseki
++            string externalIP;
++
++            if (config.Contains("ExternalAddress"))
++            {
++                externalIP = config.GetString("ExternalAddress", "0.0.0.0");
++            }
++            else
++            {
++                externalIP = "0.0.0.0";    // NAT is not used
++            }
++
++            if (externalIP=="0.0.0.0")
++            {
++                IPAddress ip = NetworkUtil.GetIPfromString(m_externalHostName);
++                if (ip!=null) externalIP = ip.ToString();
++            }
++            m_externalIPAddress = externalIP;
++
++
+             // Master avatar cruft
+             //
+             string masterAvatarUUID;
+@@ -563,6 +622,7 @@
+             config.Set("AllowAlternatePorts", m_allow_alternate_ports.ToString());
+ 
+             config.Set("ExternalHostName", m_externalHostName);
++            //config.Set("ExternalIPAddress", m_externalIPAddress);    // by Fumi.Iseki
+ 
+             if (MasterAvatarAssignedUUID != UUID.Zero)
+             {
+@@ -651,6 +711,9 @@
+             configMember.addConfigurationOption("external_host_name",
+                                                 ConfigurationOption.ConfigurationTypes.TYPE_STRING_NOT_EMPTY,
+                                                 "External Host Name", m_externalHostName, true);
++            configMember.addConfigurationOption("external_ip_address",   // by Fumi.Iseki for NAT
++                                                ConfigurationOption.ConfigurationTypes.TYPE_STRING_NOT_EMPTY,
++                                                "External IP Address", m_externalIPAddress, true);
+             configMember.addConfigurationOption("master_avatar_uuid", ConfigurationOption.ConfigurationTypes.TYPE_UUID,
+                                                 "Master Avatar UUID", MasterAvatarAssignedUUID.ToString(), true);
+             configMember.addConfigurationOption("master_avatar_first",
+@@ -711,6 +774,9 @@
+             configMember.addConfigurationOption("external_host_name",
+                                                 ConfigurationOption.ConfigurationTypes.TYPE_STRING_NOT_EMPTY,
+                                                 "External Host Name", "127.0.0.1", false);
++            configMember.addConfigurationOption("external_ip_address",    // by Fumi.Iseki for NAT
++                                                ConfigurationOption.ConfigurationTypes.TYPE_STRING_NOT_EMPTY,
++                                                "External IP Address", "0.0.0.0", false);
+             configMember.addConfigurationOption("master_avatar_uuid", ConfigurationOption.ConfigurationTypes.TYPE_UUID,
+                                                 "Master Avatar UUID", UUID.Zero.ToString(), true);
+             configMember.addConfigurationOption("master_avatar_first",
+@@ -797,6 +863,9 @@
+                         m_externalHostName = Util.GetLocalHost().ToString();
+                     }
+                     break;
++                case "external_ip_address":     // by Fumi.Iseki
++                    m_externalIPAddress = (string) configuration_result;
++                    break;
+                 case "master_avatar_uuid":
+                     MasterAvatarAssignedUUID = (UUID) configuration_result;
+                     break;
+@@ -857,6 +926,7 @@
+             if ((RegionName != null) && !RegionName.Equals(""))
+                 args["region_name"] = OSD.FromString(RegionName);
+             args["external_host_name"] = OSD.FromString(ExternalHostName);
++            args["external_ip_address"] = OSD.FromString(ExternalIPAddress);    // by Fumi.Iseki for NAT
+             args["http_port"] = OSD.FromString(HttpPort.ToString());
+             args["server_uri"] = OSD.FromString(ServerURI);
+             args["region_xloc"] = OSD.FromString(RegionLocX.ToString());
+@@ -883,6 +953,8 @@
+                 RegionName = args["region_name"].AsString();
+             if (args["external_host_name"] != null)
+                 ExternalHostName = args["external_host_name"].AsString();
++            if (args["external_ip_address"] != null)                           // by Fumi.Iseki for NAT
++                ExternalIPAddress = args["external_ip_address"].AsString();
+             if (args["http_port"] != null)
+                 UInt32.TryParse(args["http_port"].AsString(), out m_httpPort);
+             if (args["server_uri"] != null)
+@@ -922,11 +994,11 @@
+                 m_regionType = args["region_type"].AsString();
+         }
+ 
+-        public static RegionInfo Create(UUID regionID, string regionName, uint regX, uint regY, string externalHostName, uint httpPort, uint simPort, uint remotingPort, string serverURI)
++        public static RegionInfo Create(UUID regionID, string regionName, uint regX, uint regY, string externalHostName, string externalIP, uint httpPort, uint simPort, uint remotingPort, string serverURI)
+         {
+             RegionInfo regionInfo;
+             IPEndPoint neighbourInternalEndPoint = new IPEndPoint(Util.GetHostFromDNS(externalHostName), (int)simPort);
+-            regionInfo = new RegionInfo(regX, regY, neighbourInternalEndPoint, externalHostName);
++            regionInfo = new RegionInfo(regX, regY, neighbourInternalEndPoint, externalHostName, externalIP);
+             regionInfo.RemotingPort = remotingPort;
+             regionInfo.RemotingAddress = externalHostName;
+             regionInfo.HttpPort = httpPort;
+diff -Nur opensim-/OpenSim/Grid/GridServer.Modules/GridRestModule.cs opensim/OpenSim/Grid/GridServer.Modules/GridRestModule.cs
+--- opensim-/OpenSim/Grid/GridServer.Modules/GridRestModule.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Grid/GridServer.Modules/GridRestModule.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -151,7 +151,7 @@
+                     respstring += "<sim>";
+                     respstring += "<uuid>" + TheSim.UUID.ToString() + "</uuid>";
+                     respstring += "<regionname>" + TheSim.regionName + "</regionname>";
+-                    respstring += "<sim_ip>" + TheSim.serverIP + "</sim_ip>";
++                    respstring += "<sim_ip>" + TheSim.serverIPadr + "</sim_ip>";     // Fumi.Iseki serverIP -> serverIPadr
+                     respstring += "<sim_port>" + TheSim.serverPort.ToString() + "</sim_port>";
+                     respstring += "<region_locx>" + TheSim.regionLocX.ToString() + "</region_locx>";
+                     respstring += "<region_locy>" + TheSim.regionLocY.ToString() + "</region_locy>";
+@@ -230,7 +230,11 @@
+                         break;
+ 
+                     case "sim_ip":
+-                        theSim.serverIP = simnode.ChildNodes[i].InnerText;
++                        theSim.serverIPadr = simnode.ChildNodes[i].InnerText;  // Fumi.Iseki
++                        break;
++
++                    case "sim_name":
++                        theSim.serverName = simnode.ChildNodes[i].InnerText;  // Fumi.Iseki
+                         break;
+ 
+                     case "sim_port":
+@@ -249,19 +253,23 @@
+                 }
+             }
+ 
+-            theSim.serverURI = "http://" + theSim.serverIP + ":" + theSim.serverPort + "/";
++            // by Fumi.Iseki for NAT
++            //theSim.serverURI = "http://" + theSim.serverIP + ":" + theSim.serverPort + "/";
++            theSim.serverURI = "http://" + theSim.serverName + ":" + theSim.serverPort + "/";
++
+             bool requirePublic = false;
+             bool requireValid = true;
+ 
+             if (requirePublic &&
+-                (theSim.serverIP.StartsWith("172.16") || theSim.serverIP.StartsWith("192.168") ||
+-                 theSim.serverIP.StartsWith("10.") || theSim.serverIP.StartsWith("0.") ||
+-                 theSim.serverIP.StartsWith("255.")))
++                (theSim.serverIPadr.StartsWith("172.16") || theSim.serverIPadr.StartsWith("192.168") ||
++                 theSim.serverIPadr.StartsWith("10.") || theSim.serverIPadr.StartsWith("0.") ||
++                 theSim.serverIPadr.StartsWith("255.")))
+             {
+                 return "ERROR! Servers must register with public addresses.";
+             }
+ 
+-            if (requireValid && (theSim.serverIP.StartsWith("0.") || theSim.serverIP.StartsWith("255.")))
++            // by Fumi.Iseki for NAT
++            if (requireValid && (theSim.serverIPadr.StartsWith("0.") || theSim.serverIPadr.StartsWith("255.")))
+             {
+                 return "ERROR! 0.*.*.* / 255.*.*.* Addresses are invalid, please check your server config and try again";
+             }
+diff -Nur opensim-/OpenSim/Grid/GridServer.Modules/GridXmlRpcModule.cs opensim/OpenSim/Grid/GridServer.Modules/GridXmlRpcModule.cs
+--- opensim-/OpenSim/Grid/GridServer.Modules/GridXmlRpcModule.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Grid/GridServer.Modules/GridXmlRpcModule.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -126,7 +126,9 @@
+                                                  (uint)(central_region.regionLocY + y) * Constants.RegionSize));
+ 
+                         response += "<neighbour>";
+-                        response += "<sim_ip>" + neighbour.serverIP + "</sim_ip>";
++                        // by Fumi.Iseki for NAT
++                        response += "<sim_name>" + neighbour.serverName + "</sim_name>";
++                        response += "<sim_ip>" + neighbour.serverIPadr + "</sim_ip>";
+                         response += "<sim_port>" + neighbour.serverPort.ToString() + "</sim_port>";
+                         response += "<locx>" + neighbour.regionLocX.ToString() + "</locx>";
+                         response += "<locy>" + neighbour.regionLocY.ToString() + "</locy>";
+@@ -376,7 +378,10 @@
+             responseData["estate_id"] = "1";
+             responseData["neighbours"] = SimNeighboursData;
+ 
+-            responseData["sim_ip"] = sim.serverIP;
++            // by Fumi.Iseki
++            responseData["sim_ip"] = sim.serverIPadr;
++            responseData["sim_name"] = sim.serverName;
++
+             responseData["sim_port"] = sim.serverPort.ToString();
+             responseData["asset_url"] = sim.regionAssetURI;
+             responseData["asset_sendkey"] = sim.regionAssetSendKey;
+@@ -432,7 +437,10 @@
+                 foreach (RegionProfileData aSim in neighbours)
+                 {
+                     NeighbourBlock = new Hashtable();
+-                    NeighbourBlock["sim_ip"] = aSim.serverIP;
++                    // Fumi.Iseki
++                    NeighbourBlock["sim_ip"] = aSim.serverIPadr;
++                    NeighbourBlock["sim_name"] = aSim.serverName;
++
+                     NeighbourBlock["sim_port"] = aSim.serverPort.ToString();
+                     NeighbourBlock["region_locx"] = aSim.regionLocX.ToString();
+                     NeighbourBlock["region_locy"] = aSim.regionLocY.ToString();
+@@ -462,7 +470,10 @@
+                                                         (uint)(sim.regionLocY + y) * Constants.RegionSize));
+ 
+                             NeighbourBlock = new Hashtable();
+-                            NeighbourBlock["sim_ip"] = neighbour.serverIP;
++                            // Fumi.Iseki
++                            NeighbourBlock["sim_ip"] = neighbour.serverIPadr;
++                            NeighbourBlock["sim_name"] = neighbour.serverName;
++
+                             NeighbourBlock["sim_port"] = neighbour.serverPort.ToString();
+                             NeighbourBlock["region_locx"] = neighbour.regionLocX.ToString();
+                             NeighbourBlock["region_locy"] = neighbour.regionLocY.ToString();
+@@ -515,7 +526,10 @@
+             sim.regionUserSendKey = m_config.UserSendKey;
+             sim.regionUserRecvKey = m_config.UserRecvKey;
+ 
+-            sim.serverIP = (string)requestData["sim_ip"];
++            // Fumi.Iseki
++            sim.serverIPadr = (string)requestData["sim_ip"];
++            sim.serverName = (string)requestData["sim_name"];
++
+             sim.serverPort = Convert.ToUInt32((string)requestData["sim_port"]);
+             sim.httpPort = Convert.ToUInt32((string)requestData["http_port"]);
+             sim.remotingPort = Convert.ToUInt32((string)requestData["remoting_port"]);
+@@ -549,9 +563,11 @@
+             sim.regionHandle = Utils.UIntsToLong((sim.regionLocX * Constants.RegionSize), (sim.regionLocY * Constants.RegionSize));
+             sim.serverURI = (string)requestData["server_uri"];
+ 
+-            sim.httpServerURI = "http://" + sim.serverIP + ":" + sim.httpPort + "/";
++            //sim.httpServerURI = "http://" + sim.serverIP + ":" + sim.httpPort + "/";
++            sim.httpServerURI = "http://" + sim.serverName + ":" + sim.httpPort + "/";
+ 
+-            sim.regionName = (string)requestData["sim_name"];
++            //sim.regionName = (string)requestData["sim_name"];
++            sim.regionName = (string)requestData["regionname"];
+ 
+ 
+             try
+@@ -680,7 +696,10 @@
+             {
+                 m_log.Info("[DATA]: found " + (string)simData.regionName + " regionHandle = " +
+                            (string)requestData["region_handle"]);
+-                responseData["sim_ip"] = simData.serverIP;
++                // Fumi.Iseki
++                responseData["sim_ip"] = simData.serverIPadr;
++                responseData["sim_name"] = simData.serverName;
++
+                 responseData["sim_port"] = simData.serverPort.ToString();
+                 responseData["server_uri"] = simData.serverURI;
+                 responseData["http_port"] = simData.httpPort.ToString();
+@@ -747,7 +766,10 @@
+ 
+                     // For Sugilite compatibility
+                     simProfileBlock["regionhandle"] = aSim.regionHandle.ToString();
+-                    simProfileBlock["sim_ip"] = aSim.serverIP;
++                    // Fumi.Iseki
++                    simProfileBlock["sim_ip"] = aSim.serverIPadr;
++                    simProfileBlock["sim_name"] = aSim.serverName;
++
+                     simProfileBlock["sim_port"] = aSim.serverPort.ToString();
+                     simProfileBlock["sim_uri"] = aSim.serverURI.ToString();
+                     simProfileBlock["uuid"] = aSim.UUID.ToString();
+@@ -782,7 +804,10 @@
+ 
+                             // For Sugilite compatibility
+                             simProfileBlock["regionhandle"] = simProfile.regionHandle.ToString();
+-                            simProfileBlock["sim_ip"] = simProfile.serverIP.ToString();
++                            // Fumi.Iseki
++                            simProfileBlock["sim_ip"] = simProfile.serverIPadr.ToString();
++                            simProfileBlock["sim_name"] = simProfile.serverName.ToString();
++
+                             simProfileBlock["sim_port"] = simProfile.serverPort.ToString();
+                             simProfileBlock["sim_uri"] = simProfile.serverURI.ToString();
+                             simProfileBlock["uuid"] = simProfile.UUID.ToString();
+@@ -839,7 +864,10 @@
+                     responseData[prefix + "region_UUID"] = sim.UUID.ToString();
+                     responseData[prefix + "region_locx"] = sim.regionLocX.ToString();
+                     responseData[prefix + "region_locy"] = sim.regionLocY.ToString();
+-                    responseData[prefix + "sim_ip"] = sim.serverIP.ToString();
++                    // Fumi.Iseki
++                    responseData[prefix + "sim_ip"] = sim.serverIPadr.ToString();
++                    responseData[prefix + "sim_name"] = sim.serverName.ToString();
++
+                     responseData[prefix + "sim_port"] = sim.serverPort.ToString();
+                     responseData[prefix + "remoting_port"] = sim.remotingPort.ToString();
+                     responseData[prefix + "http_port"] = sim.httpPort.ToString();
+diff -Nur opensim-/OpenSim/Grid/MessagingServer.Modules/MessageRegionModule.cs opensim/OpenSim/Grid/MessagingServer.Modules/MessageRegionModule.cs
+--- opensim-/OpenSim/Grid/MessagingServer.Modules/MessageRegionModule.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Grid/MessagingServer.Modules/MessageRegionModule.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -162,7 +162,10 @@
+             rprofile.regionLocY = (uint)(region.RegionLocY / Constants.RegionSize);
+             rprofile.RegionName = region.RegionName;
+             rprofile.ServerHttpPort = region.HttpPort;
+-            rprofile.ServerIP = region.ExternalHostName;
++            // Fumi.Iseki
++            rprofile.ServerIPadr = region.ExternalIPAddress;
++            rprofile.ServerName = region.ExternalHostName;
++
+             rprofile.ServerPort = (uint)region.ExternalEndPoint.Port;
+             rprofile.Uuid = region.RegionID;
+             return rprofile;
+diff -Nur opensim-/OpenSim/Grid/UserServer.Modules/UserLoginService.cs opensim/OpenSim/Grid/UserServer.Modules/UserLoginService.cs
+--- opensim-/OpenSim/Grid/UserServer.Modules/UserLoginService.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Grid/UserServer.Modules/UserLoginService.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -233,6 +233,7 @@
+ 
+             RegionInfo rinfo = new RegionInfo();
+             rinfo.ExternalHostName = gregion.ExternalHostName;
++            rinfo.ExternalIPAddress = gregion.ExternalIPAddress;   // by Fumi.Iseki for NAT
+             rinfo.HttpPort = gregion.HttpPort;
+             rinfo.InternalEndPoint = gregion.InternalEndPoint;
+             rinfo.RegionID = gregion.RegionID;
+@@ -262,7 +263,14 @@
+         {
+             try
+             {
+-                response.SimAddress = Util.GetHostFromURL(regionInfo.serverURI).ToString();
++                // by Fumi.Iseki
++                IPAddress simip = NetworkUtil.GetIPfromString(regionInfo.serverIPadr);
++                IPAddress ip    = NetworkUtil.GetIPfromString(regionInfo.serverName);
++                if (ip!=null) simip = NetworkUtil.GetEffectiveIP(remoteClient.Address, ip, simip, null);
++
++                //response.SimAddress = Util.GetHostFromURL(regionInfo.serverURI).ToString();
++                response.SimAddress = simip.ToString();
++
+                 response.SimPort = uint.Parse(regionInfo.serverURI.Split(new char[] { '/', ':' })[4]);
+                 response.RegionX = regionInfo.regionLocX;
+                 response.RegionY = regionInfo.regionLocY;
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Scene.cs opensim/OpenSim/Region/Framework/Scenes/Scene.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Scene.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Scene.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -804,7 +804,8 @@
+                     // Let the grid service module know, so this can be cached
+                     m_eventManager.TriggerOnRegionUp(otherRegion);
+ 
+-                    RegionInfo regInfo = new RegionInfo(xcell, ycell, otherRegion.InternalEndPoint, otherRegion.ExternalHostName);
++                    // Fumi.Iseki for NAT
++                    RegionInfo regInfo = new RegionInfo(xcell, ycell, otherRegion.InternalEndPoint, otherRegion.ExternalHostName, otherRegion.ExternalIPAddress);
+                     regInfo.RegionID = otherRegion.RegionID;
+                     regInfo.RegionName = otherRegion.RegionName;
+                     regInfo.ScopeID = otherRegion.ScopeID;
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/SceneCommunicationService.cs opensim/OpenSim/Region/Framework/Scenes/SceneCommunicationService.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/SceneCommunicationService.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/SceneCommunicationService.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -463,7 +463,15 @@
+                     InformClientOfNeighbourDelegate d = InformClientOfNeighbourAsync;
+                     try
+                     {
+-                        d.BeginInvoke(avatar, cagents[count], neighbour, neighbour.ExternalEndPoint, newAgent,
++                        // Fumi.Iseki for NAT
++                        IClientIPEndpoint ipepClient;
++                        IPEndPoint endPoint = neighbour.InternalEndPoint;
++                        if (avatar.ClientView.TryGet(out ipepClient))
++                        {
++                            endPoint = NetworkUtil.GetEffectiveIP(ipepClient.EndPoint, neighbour.InternalEndPoint, neighbour.ExternalEndPoint, m_regionInfo.ExternalEndPoint);
++                        }
++                        //d.BeginInvoke(avatar, cagents[count], neighbour, neighbour.ExternalEndPoint, newAgent,
++                        d.BeginInvoke(avatar, cagents[count], neighbour, endPoint, newAgent,
+                                       InformClientOfNeighbourCompleted,
+                                       d);
+                     }
+@@ -512,7 +520,16 @@
+             agent.child = true;
+ 
+             InformClientOfNeighbourDelegate d = InformClientOfNeighbourAsync;
+-            d.BeginInvoke(avatar, agent, region, region.ExternalEndPoint, true,
++
++            // Fumi.Iseki for NAT
++            IClientIPEndpoint ipepClient;
++            IPEndPoint endPoint = region.InternalEndPoint;
++            if (avatar.ClientView.TryGet(out ipepClient))
++            {
++                endPoint = NetworkUtil.GetEffectiveIP(ipepClient.EndPoint, region.InternalEndPoint, region.ExternalEndPoint, m_regionInfo.ExternalEndPoint);
++            }
++            //d.BeginInvoke(avatar, agent, region, region.ExternalEndPoint, true,
++            d.BeginInvoke(avatar, agent, region, endPoint, true,
+                           InformClientOfNeighbourCompleted,
+                           d);
+         }
+@@ -752,7 +769,16 @@
+                     // Let's do DNS resolution only once in this process, please!
+                     // This may be a costly operation. The reg.ExternalEndPoint field is not a passive field,
+                     // it's actually doing a lot of work.
+-                    IPEndPoint endPoint = reg.ExternalEndPoint;
++                    //IPEndPoint endPoint = reg.ExternalEndPoint;
++
++                    // Fumi.Iseki for NAT
++                    IClientIPEndpoint ipClient;
++                    IPEndPoint endPoint = reg.InternalEndPoint;
++                    if (avatar.ClientView.TryGet(out ipClient))
++                    {
++                        endPoint = NetworkUtil.GetEffectiveIP(ipClient.EndPoint, reg.InternalEndPoint, reg.ExternalEndPoint, m_regionInfo.ExternalEndPoint);
++                    }
++
+                     if (endPoint.Address == null)
+                     {
+                         // Couldn't resolve the name. Can't TP, because the viewer wants IP addresses.
+@@ -1357,15 +1383,28 @@
+ 
+                 m_log.DebugFormat("[CAPS]: Sending new CAPS seed url {0} to client {1}", capsPath, agent.UUID);
+ 
++
++                // Fumi.Iseki for NAT
++                IClientIPEndpoint ipepClient;
++                IPEndPoint endPoint = neighbourRegion.InternalEndPoint;
++                if (agent.ClientView.TryGet(out ipepClient))
++                {
++                    endPoint = NetworkUtil.GetEffectiveIP(ipepClient.EndPoint, neighbourRegion.InternalEndPoint, neighbourRegion.ExternalEndPoint, m_regionInfo.ExternalEndPoint);
++                }
++
+                 IEventQueue eq = agent.Scene.RequestModuleInterface<IEventQueue>();
+                 if (eq != null)
+                 {
+-                    eq.CrossRegion(neighbourHandle, pos, agent.Velocity, neighbourRegion.ExternalEndPoint,
++                    // Fumi.Iseki for NAT
++                    //eq.CrossRegion(neighbourHandle, pos, agent.Velocity, neighbourRegion.ExternalEndPoint,
++                    eq.CrossRegion(neighbourHandle, pos, agent.Velocity, endPoint,
+                                    capsPath, agent.UUID, agent.ControllingClient.SessionId);
+                 }
+                 else
+                 {
+-                    agent.ControllingClient.CrossRegion(neighbourHandle, pos, agent.Velocity, neighbourRegion.ExternalEndPoint,
++                    // Fumi.Iseki for NAT
++                    //agent.ControllingClient.CrossRegion(neighbourHandle, pos, agent.Velocity, neighbourRegion.ExternalEndPoint,
++                    agent.ControllingClient.CrossRegion(neighbourHandle, pos, agent.Velocity, endPoint,
+                                                 capsPath);
+                 }
+ 
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Tests/SceneTests.cs opensim/OpenSim/Region/Framework/Scenes/Tests/SceneTests.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Tests/SceneTests.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Tests/SceneTests.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -129,7 +129,9 @@
+         [Test]
+         public void TestConstructor()
+         {
+-            RegionInfo regionInfo = new RegionInfo(0,0,null,null);
++            // Fumi.Iseki
++            //RegionInfo regionInfo = new RegionInfo(0,0,null,null);
++            RegionInfo regionInfo = new RegionInfo(0,0,null,null,null);
+             FakeStorageManager storageManager = new FakeStorageManager();
+ 
+             new Scene(regionInfo, null, null, null, storageManager, null, false, false, false, null, null);
+diff -Nur opensim-/OpenSim/Services/Interfaces/IGridService.cs opensim/OpenSim/Services/Interfaces/IGridService.cs
+--- opensim-/OpenSim/Services/Interfaces/IGridService.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Services/Interfaces/IGridService.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -123,6 +123,7 @@
+         protected string m_regionName = String.Empty;
+ 
+         protected string m_externalHostName;
++        protected string m_externalIPAddress;    // by Fumi.Iseki
+ 
+         protected IPEndPoint m_internalEndPoint;
+ 
+@@ -160,21 +161,25 @@
+         {
+         }
+ 
+-        public GridRegion(int regionLocX, int regionLocY, IPEndPoint internalEndPoint, string externalUri)
++        // by Fumi.Iseki
++        public GridRegion(int regionLocX, int regionLocY, IPEndPoint internalEndPoint, string externalUri, string externalIP)
+         {
+             m_regionLocX = regionLocX;
+             m_regionLocY = regionLocY;
+ 
+             m_internalEndPoint = internalEndPoint;
+             m_externalHostName = externalUri;
++            m_externalIPAddress = externalIP;
+         }
+ 
+-        public GridRegion(int regionLocX, int regionLocY, string externalUri, uint port)
++        // by Fumi.Iseki
++        public GridRegion(int regionLocX, int regionLocY, string externalUri, string externalIP, uint port)
+         {
+             m_regionLocX = regionLocX;
+             m_regionLocY = regionLocY;
+ 
+             m_externalHostName = externalUri;
++            m_externalIPAddress = externalIP;
+ 
+             m_internalEndPoint = new IPEndPoint(IPAddress.Parse("0.0.0.0"), (int)port);
+         }
+@@ -192,6 +197,7 @@
+             m_regionLocY = (int)(ConvertFrom.RegionLocY * Constants.RegionSize);
+             m_internalEndPoint = ConvertFrom.InternalEndPoint;
+             m_externalHostName = ConvertFrom.ExternalHostName;
++            m_externalIPAddress = ConvertFrom.ExternalIPAddress; // Fumi.Iseki
+             m_httpPort = ConvertFrom.HttpPort;
+             RegionID = ConvertFrom.RegionID;
+             ServerURI = ConvertFrom.ServerURI;
+@@ -215,6 +221,7 @@
+             m_regionLocY = ConvertFrom.RegionLocY;
+             m_internalEndPoint = ConvertFrom.InternalEndPoint;
+             m_externalHostName = ConvertFrom.ExternalHostName;
++            m_externalIPAddress = ConvertFrom.ExternalIPAddress;   // Fumi.Iseki
+             m_httpPort = ConvertFrom.HttpPort;
+             RegionID = ConvertFrom.RegionID;
+             ServerURI = ConvertFrom.ServerURI;
+@@ -234,13 +241,26 @@
+         {
+             get
+             {
++                // by Fumi.Iseki for NAT
++                if (m_externalIPAddress!=null && m_externalIPAddress!="0.0.0.0") 
++                {
++                    IPAddress ip = NetworkUtil.GetIPfromString(m_externalIPAddress);
++                    return new IPEndPoint(ip, m_internalEndPoint.Port);
++                }                    
++  
+                 // Old one defaults to IPv6
+                 //return new IPEndPoint(Dns.GetHostAddresses(m_externalHostName)[0], m_internalEndPoint.Port);
+ 
+-                IPAddress ia = null;
++                // by Fumi.Iseki for NAT
++                //IPAddress ia = null;
+                 // If it is already an IP, don't resolve it - just return directly
+-                if (IPAddress.TryParse(m_externalHostName, out ia))
++                //if (IPAddress.TryParse(m_externalHostName, out ia))
++                IPAddress ia = NetworkUtil.GetIPfromString(m_externalHostName);
++                if (ia!=null)
++                {
++                    m_externalIPAddress = ia.ToString();
+                     return new IPEndPoint(ia, m_internalEndPoint.Port);
++                }
+ 
+                 // Reset for next check
+                 ia = null;
+@@ -268,7 +288,17 @@
+                 return new IPEndPoint(ia, m_internalEndPoint.Port);
+             }
+ 
+-            set { m_externalHostName = value.ToString(); }
++            set 
++            { 
++                m_externalHostName = value.ToString();
++
++                // by Fumi.Iseki for NAT 
++                IPAddress ia = NetworkUtil.GetIPfromString(m_externalHostName);
++                if (ia!=null)
++                {
++                    m_externalIPAddress = ia.ToString();
++                }
++            }
+         }
+ 
+         public string ExternalHostName
+@@ -277,6 +307,13 @@
+             set { m_externalHostName = value; }
+         }
+ 
++        // by Fumi.Iseki for NAT
++        public string ExternalIPAddress
++        {             
++            get { return m_externalIPAddress; }
++            set { m_externalIPAddress = value; }
++        }
++
+         public IPEndPoint InternalEndPoint
+         {
+             get { return m_internalEndPoint; }
+@@ -300,7 +337,11 @@
+             kvp["locX"] = RegionLocX.ToString();
+             kvp["locY"] = RegionLocY.ToString();
+             kvp["regionName"] = RegionName;
+-            kvp["serverIP"] = ExternalHostName; //ExternalEndPoint.Address.ToString();
++            // Fumi.Iseki
++            //kvp["serverIP"] = ExternalHostName; //ExternalEndPoint.Address.ToString();
++            //kvp["serverName"] = ExternalHostName; //ExternalEndPoint.Address.ToString();
++            kvp["serverIP"] = ExternalIPAddress; //ExternalEndPoint.Address.ToString();
++
+             kvp["serverHttpPort"] = HttpPort.ToString();
+             kvp["serverURI"] = ServerURI;
+             kvp["serverPort"] = InternalEndPoint.Port.ToString();
+@@ -326,15 +367,28 @@
+             if (kvp.ContainsKey("regionName"))
+                 RegionName = (string)kvp["regionName"];
+ 
+-            if (kvp.ContainsKey("serverIP"))
++            // Fumi.Iseki
++            /*
++            if (kvp.ContainsKey("serverName"))
+             {
+                 //int port = 0;
+                 //Int32.TryParse((string)kvp["serverPort"], out port);
+                 //IPEndPoint ep = new IPEndPoint(IPAddress.Parse((string)kvp["serverIP"]), port);
+-                ExternalHostName = (string)kvp["serverIP"];
++                ExternalHostName = (string)kvp["serverName"];
+             }
+             else
+-                ExternalHostName = "127.0.0.1";
++                //ExternalHostName = "127.0.0.1";
++                ExternalHostName = "localhost";
++            */
++
++            // Fumi.Iseki
++            if (kvp.ContainsKey("serverIP"))
++            {
++                ExternalIPAddress = (string)kvp["serverIP"];
++            }
++            else
++                ExternalIPAddress = "127.0.0.1";
++
+ 
+             if (kvp.ContainsKey("serverPort"))
+             {
+@@ -350,8 +404,12 @@
+                 HttpPort = port;
+             }
+ 
++            // Fumi.Iseki
+             if (kvp.ContainsKey("serverURI"))
++            {
+                 ServerURI = (string)kvp["serverURI"];
++                ExternalHostName = ServerURI.Split(new char[] { '/', ':' })[3];
++            }
+ 
+             if (kvp.ContainsKey("regionMapTexture"))
+                 UUID.TryParse((string)kvp["regionMapTexture"], out TerrainImage);
+diff -Nur opensim-/OpenSim/Tests/Common/Setup/SceneSetupHelpers.cs opensim/OpenSim/Tests/Common/Setup/SceneSetupHelpers.cs
+--- opensim-/OpenSim/Tests/Common/Setup/SceneSetupHelpers.cs	2010-02-13 15:22:51.000000000 +0900
++++ opensim/OpenSim/Tests/Common/Setup/SceneSetupHelpers.cs	2010-02-13 15:24:35.000000000 +0900
+@@ -144,7 +144,10 @@
+             }
+ 
+             // We must set up a console otherwise setup of some modules may fail
+-            RegionInfo regInfo = new RegionInfo(x, y, new IPEndPoint(IPAddress.Loopback, 9000), "127.0.0.1");
++            //RegionInfo regInfo = new RegionInfo(x, y, new IPEndPoint(IPAddress.Loopback, 9000), "127.0.0.1");
++            // Fumi.Iseki
++            RegionInfo regInfo = new RegionInfo(x, y, new IPEndPoint(IPAddress.Loopback, 9000), "localhost", "127.0.0.1");
++
+             regInfo.RegionName = name;
+             regInfo.RegionID = id;
+ 

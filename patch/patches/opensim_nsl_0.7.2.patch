@@ -1,0 +1,488 @@
+diff -Nur opensim-/OpenSim/ConsoleClient/ConsoleClient.cs opensim/OpenSim/ConsoleClient/ConsoleClient.cs
+--- opensim-/OpenSim/ConsoleClient/ConsoleClient.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/ConsoleClient/ConsoleClient.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -46,6 +46,8 @@
+         private static string m_User;
+         private static string m_Pass;
+         private static UUID m_SessionID;
++        private static bool m_end_flag;
++        //private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+ 
+         static int Main(string[] args)
+         {
+@@ -76,10 +78,12 @@
+ 
+             string pidFile = serverConfig.GetString("PIDFile", String.Empty);
+ 
+-            while (m_Server.Running)
++            m_end_flag = !m_Server.Running;
++            while (!m_end_flag)
+             {
+                 System.Threading.Thread.Sleep(500);
+                 // MainConsole.Instance.Prompt();
++                if (!m_Server.Running) m_end_flag = true;
+             }
+ 
+             if (pidFile != String.Empty)
+@@ -93,12 +97,27 @@
+         private static void SendCommand(string module, string[] cmd)
+         {
+             string sendCmd = "";
+-            string[] cmdlist = new string[cmd.Length - 1];
+ 
+-            sendCmd = cmd[0];
++            if (cmd.Length > 0)
++            {
++                sendCmd = cmd[0].Trim();
++                // shutdown or quit
++                if (sendCmd.StartsWith("quit"))
++                {
++                    if (sendCmd.Length==4)                m_end_flag = true;
++                    else if (sendCmd.Substring(4,1)==" ") m_end_flag = true;
++                    if (m_end_flag) return;
++                }
++                if (sendCmd.StartsWith("shutdown"))
++                {
++                    if (sendCmd.Length==8)                m_end_flag = true;
++                    else if (sendCmd.Substring(8,1)==" ") m_end_flag = true;
++                }
++            }
+ 
+             if (cmd.Length > 1)
+             {
++                string[] cmdlist = new string[cmd.Length - 1];
+                 Array.Copy(cmd, 1, cmdlist, 0, cmd.Length - 1);
+                 sendCmd += " \"" + String.Join("\" \"", cmdlist) + "\"";
+             }
+@@ -203,18 +222,33 @@
+                     continue;
+                 
+                 if (parts[2].StartsWith("+++") || parts[2].StartsWith("-++"))
++                {
+                     prompt = parts[2];
++                    if (prompt.StartsWith("+++"))
++                    {
++                        int len = prompt.Length;
++                        if (prompt.Substring(len-1, 1)=="#")
++                        {
++                            prompt += " ";
++                        }
++                        else if (len>=2 && prompt.Substring(len-2, 2)!="# ")
++                        {
++                            prompt += "# ";
++                        }
++                    }
++                }
+                 else
++                {
+                     MainConsole.Instance.Output(parts[2].Trim(), parts[1]);
++                }
+             }
+ 
+-
+             Requester.MakeRequest(requestUrl, requestData, ReadResponses);
+ 
+-            if (prompt.StartsWith("+++"))
+-                MainConsole.Instance.ReadLine(prompt.Substring(3), true, true);
+-            else if (prompt.StartsWith("-++"))
++            if (prompt.StartsWith("+++") || prompt.StartsWith("-++"))
++            {
+                 SendCommand(String.Empty, new string[] { MainConsole.Instance.ReadLine(prompt.Substring(3), false, true) });
++            }
+         }
+ 
+         public static void CommandReply(string requestUrl, string requestData, string replyData)
+diff -Nur opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs
+--- opensim-/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/CoreModules/Avatar/InstantMessage/OfflineMessageModule.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -182,19 +182,22 @@
+                 if (msglist == null)
+                     m_log.WarnFormat("[OFFLINE MESSAGING]: WARNING null message list.");
+ 
+-                foreach (GridInstantMessage im in msglist)
++                if (msglist!=null)
+                 {
+-                    // client.SendInstantMessage(im);
+-
+-                    // Send through scene event manager so all modules get a chance
+-                    // to look at this message before it gets delivered.
+-                    //
+-                    // Needed for proper state management for stored group
+-                    // invitations
+-                    //
+-                    Scene s = FindScene(client.AgentId);
+-                    if (s != null)
+-                        s.EventManager.TriggerIncomingInstantMessage(im);
++                    foreach (GridInstantMessage im in msglist)
++                    {
++                        // client.SendInstantMessage(im);
++
++                        // Send through scene event manager so all modules get a chance
++                        // to look at this message before it gets delivered.
++                        //
++                        // Needed for proper state management for stored group
++                        // invitations
++                        //
++                        Scene s = FindScene(client.AgentId);
++                        if (s != null)
++                            s.EventManager.TriggerIncomingInstantMessage(im);
++                    }
+                 }
+             }
+         }
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Scene.cs opensim/OpenSim/Region/Framework/Scenes/Scene.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Scene.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Scene.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -686,7 +686,9 @@
+                 + " PhysPrim:" + m_physicalPrim.ToString();
+             */
+ 
+-            m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++            // by Fumi.Iseki
++            //m_simulatorVersion = simulatorVersion + " (" + Util.GetRuntimeInformation() + ")";
++            m_simulatorVersion = simulatorVersion;
+ 
+             #region Region Config
+ 
+diff -Nur opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs
+--- opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -192,16 +192,36 @@
+             return false;
+         }
+ 
++
++        // by Fumi.Iseki for Mega Region
++        private Vector2 worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
++
++        public virtual Vector2 GetWorldExtents()
++        {
++            return worldExtents;
++        }
++
++        public virtual float GetWorldExtentsHeight(float x, float y)
++        {
++            return 0.0f;
++        }
++
++        public virtual void SetWorldExtentsHeight(float x, float y, float heigt)
++        {
++        }
++
+         public virtual void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
++            worldExtents = new Vector2(0.0f, 0.0f);
+             return;
+         }
+ 
+         public virtual void UnCombine(PhysicsScene pScene)
+         {
+-            
++            worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
+         }
+ 
++
+         /// <summary>
+         /// Queue a raycast against the physics scene.
+         /// The provided callback method will be called when the raycast is complete
+diff -Nur opensim-/OpenSim/Region/Physics/Meshing/Meshmerizer.cs opensim/OpenSim/Region/Physics/Meshing/Meshmerizer.cs
+--- opensim-/OpenSim/Region/Physics/Meshing/Meshmerizer.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Meshing/Meshmerizer.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -531,7 +531,16 @@
+             bool mirror = ((primShape.SculptType & 128) != 0);
+             bool invert = ((primShape.SculptType & 64) != 0);
+ 
+-            sculptMesh = new PrimMesher.SculptMesh((Bitmap)idata, sculptType, (int)lod, false, mirror, invert);
++            //sculptMesh = new PrimMesher.SculptMesh((Bitmap)idata, sculptType, (int)lod, false, mirror, invert);
++            try {
++                sculptMesh = new PrimMesher.SculptMesh((Bitmap)idata, sculptType, (int)lod, false, mirror, invert);
++            }
++            catch (Exception ex)
++            {
++                m_log.Error("[PHYSICS]: PrimMesher.SculptMesh() is error.");
++                m_log.Error("[PHYSICS]: " + ex.Message);
++                return false;
++            }
+ 
+             idata.Dispose();
+ 
+diff -Nur opensim-/OpenSim/Region/Physics/OdePlugin/ODECharacter.cs opensim/OpenSim/Region/Physics/OdePlugin/ODECharacter.cs
+--- opensim-/OpenSim/Region/Physics/OdePlugin/ODECharacter.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/Physics/OdePlugin/ODECharacter.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -878,6 +878,9 @@
+         /// <param name="force"></param>
+         public void doForce(Vector3 force)
+         {
++            // by Fumi.Iseki
++            if (force.X==0.0 && force.Y==0.0 && force.Z==0.0) return;
++
+             if (!collidelock)
+             {
+                 d.BodyAddForce(Body, force.X, force.Y, force.Z);
+diff -Nur opensim-/OpenSim/Region/Physics/OdePlugin/OdeScene.cs opensim/OpenSim/Region/Physics/OdePlugin/OdeScene.cs
+--- opensim-/OpenSim/Region/Physics/OdePlugin/OdeScene.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/Physics/OdePlugin/OdeScene.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -283,6 +283,11 @@
+ 
+         private ODERayCastRequestManager m_rayCastManager;
+ 
++        // Fumi.Iseki for Mega Region
++        private int combineXsize = 1;
++        private int combineYsize = 1;
++        private Vector2 worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
++ 
+         /// <summary>
+         /// Initiailizes the scene
+         /// Sets many properties that ODE requires to be stable
+@@ -1544,11 +1549,61 @@
+ 
+         #endregion
+ 
++
++        // Fumi.Iseki for MegaRegion
++        public override Vector2 GetWorldExtents()
++        {
++            return WorldExtents;
++        }
++        
++        public override float GetWorldExtentsHeight(float x, float y)
++        {
++            return GetTerrainHeightAtXY(x, y);
++        }
++
++        public override void SetWorldExtentsHeight(float x, float y, float height)
++        {
++            int offsetX = ((int)(x / (int)Constants.RegionSize)) * (int)Constants.RegionSize;
++            int offsetY = ((int)(y / (int)Constants.RegionSize)) * (int)Constants.RegionSize;
++
++            IntPtr heightFieldGeom = IntPtr.Zero;
++
++            if (RegionTerrain.TryGetValue(new Vector3(offsetX,offsetY,0), out heightFieldGeom))
++            {
++                if (heightFieldGeom != IntPtr.Zero)
++                {
++                    if (TerrainHeightFieldHeights.ContainsKey(heightFieldGeom))
++                    {
++                        int index;
++
++                        if ((int)x > WorldExtents.X || (int)y > WorldExtents.Y || (int)x < 0 || (int)y < 0) return;
++
++                        x = x - offsetX;
++                        y = y - offsetY;
++                        index = (int)((int)x * ((int)Constants.RegionSize + 2) + (int)y);
++
++                        if (index < TerrainHeightFieldHeights[heightFieldGeom].Length)
++                        {
++                            TerrainHeightFieldHeights[heightFieldGeom][index] = height;
++                        }
++                    }
++                }
++            }
++
++            return;
++        } 
++
+         public override void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
+             m_worldOffset = offset;
+-            WorldExtents = new Vector2(extents.X, extents.Y);
++            //WorldExtents = new Vector2(extents.X, extents.Y);
+             m_parentScene = pScene;
++
++            if (worldExtents.X!=extents.X && worldExtents.Y==extents.Y) combineXsize++;
++            if (worldExtents.X==extents.X && worldExtents.Y!=extents.Y) combineYsize++;
++
++            worldExtents = new Vector2(extents.X, extents.Y);
++            WorldExtents = new Vector2(Constants.RegionSize*combineXsize, Constants.RegionSize*combineYsize);
+         }
+ 
+         // Recovered for use by fly height. Kitto Flora
+@@ -1570,7 +1625,7 @@
+ 
+ 
+                         if ((int)x > WorldExtents.X || (int)y > WorldExtents.Y ||
+-                            (int)x < 0.001f || (int)y < 0.001f)
++                            (int)x < 0 || (int)y < 0)
+                             return 0;
+ 
+                         x = x - offsetX;
+@@ -2829,6 +2884,39 @@
+                                 m_log.WarnFormat("[PHYSICS]: BAD Actor {0} in _characters list was not removed?", actor.m_uuid);
+ 
+                             actor.UpdatePositionAndVelocity();
++
++                            // by Fumi.Iseki  for falling at SIM boundary
++                            d.Vector3 vec = d.BodyGetPosition(actor.Body);
++
++                            if ((vec.Y<0.0f || vec.Y>=WorldExtents.Y || vec.X<0.0f || vec.X>=WorldExtents.X) &&
++                                                                               !actor.IsColliding && !actor.CollidingGround) {
++                                if      (vec.Y<0.0f) { vec.Y = 0.1f;}
++                                else if (vec.Y>=WorldExtents.Y) { vec.Y = WorldExtents.Y-0.1f;}
++                                if      (vec.X<0.0f) { vec.X = 0.1f;}
++                                else if (vec.X>=WorldExtents.X) { vec.X = WorldExtents.X-0.1f;}
++
++                                float height = GetTerrainHeightAtXY(vec.X, vec.Y);
++                                //m_log.ErrorFormat("=============== ({0}, {1}, {2}) => {3}", vec.X, vec.Y, vec.Z, height);
++
++                                if (actor.Flying) {
++                                    if (vec.Z  <  height + minimumGroundFlightOffset) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                    }
++                                }
++                                else {
++                                    if (vec.Z < height + actor.Size.Z) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        //actor.Velocity.Z  = 0.0f;
++                                        actor.IsColliding = true;
++                                        actor.CollidingGround = true;
++                                    }
++                                }
++
++                                //actor.Position = new PhysicsVector(vec.X, vec.Y, vec.Z);
++                                d.BodySetPosition(actor.Body, vec.X, vec.Y, vec.Z);
++                            }
+                         }
+                     }
+                 }
+diff -Nur opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs opensim/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs
+--- opensim-/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2011-10-10 16:20:27.000000000 +0900
++++ opensim/OpenSim/Region/ScriptEngine/Shared/Api/Implementation/LSL_Api.cs	2011-10-10 16:21:16.000000000 +0900
+@@ -1116,19 +1116,34 @@
+ 
+             //Get the slope normal.  This gives us the equation of the plane tangent to the slope.
+             LSL_Vector vsn = llGroundNormal(offset);
++            float baseheight = 0.0f;
+ 
+-            // Clamp to valid position
+-            if (pos.X < 0)
+-                pos.X = 0;
+-            else if (pos.X >= World.Heightmap.Width)
+-                pos.X = World.Heightmap.Width - 1;
+-            if (pos.Y < 0)
+-                pos.Y = 0;
+-            else if (pos.Y >= World.Heightmap.Height)
+-                pos.Y = World.Heightmap.Height - 1;
++            // for Mega Region by Fumi.Iseki
++            Vector2 worldExtents = World.PhysicsScene.GetWorldExtents();
++            if (worldExtents.X>World.Heightmap.Width && worldExtents.Y>World.Heightmap.Height)
++            {
++                if (pos.X < 0) pos.X = 0;
++                else if (pos.X >= worldExtents.X) pos.X = worldExtents.X - 1;
++                if (pos.Y < 0) pos.Y = 0;
++                else if (pos.Y >= worldExtents.Y) pos.Y = worldExtents.Y - 1;
++
++                baseheight = World.PhysicsScene.GetWorldExtentsHeight(pos.X, pos.Y);
++            }
++            else
++            {
++                // Clamp to valid position
++                if (pos.X < 0)
++                   pos.X = 0;
++                else if (pos.X >= World.Heightmap.Width)
++                   pos.X = World.Heightmap.Width - 1;
++                if (pos.Y < 0)
++                   pos.Y = 0;
++                else if (pos.Y >= World.Heightmap.Height)
++                   pos.Y = World.Heightmap.Height - 1;
+ 
+-            //Get the height for the integer coordinates from the Heightmap
+-            float baseheight = (float)World.Heightmap[(int)pos.X, (int)pos.Y];
++                //Get the height for the integer coordinates from the Heightmap
++                baseheight = (float)World.Heightmap[(int)pos.X, (int)pos.Y];
++            }
+ 
+             //Calculate the difference between the actual coordinates and the integer coordinates
+             float xdiff = pos.X - (float)((int)pos.X);
+@@ -5777,33 +5792,64 @@
+             Vector3 pos = m_host.GetWorldPosition() + new Vector3((float)offset.x,
+                                                                 (float)offset.y,
+                                                                 (float)offset.z);
+-            // Clamp to valid position
+-            if (pos.X < 0)
+-                pos.X = 0;
+-            else if (pos.X >= World.Heightmap.Width)
+-                pos.X = World.Heightmap.Width - 1;
+-            if (pos.Y < 0)
+-                pos.Y = 0;
+-            else if (pos.Y >= World.Heightmap.Height)
+-                pos.Y = World.Heightmap.Height - 1;
+-
+-            //Find two points in addition to the position to define a plane
+-            Vector3 p0 = new Vector3(pos.X, pos.Y,
+-                                     (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
+-            Vector3 p1 = new Vector3();
+-            Vector3 p2 = new Vector3();
+-            if ((pos.X + 1.0f) >= World.Heightmap.Width)
+-                p1 = new Vector3(pos.X + 1.0f, pos.Y,
+-                            (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
+-            else
+-                p1 = new Vector3(pos.X + 1.0f, pos.Y,
+-                            (float)World.Heightmap[(int)(pos.X + 1.0f), (int)pos.Y]);
+-            if ((pos.Y + 1.0f) >= World.Heightmap.Height)
+-                p2 = new Vector3(pos.X, pos.Y + 1.0f,
+-                            (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
++
++            Vector3 p0, p1, p2;
++
++            // for Mega Region by Fumi.Iseki
++            Vector2 worldExtents = World.PhysicsScene.GetWorldExtents();
++            if (worldExtents.X>World.Heightmap.Width && worldExtents.Y>World.Heightmap.Height)
++            {
++                if (pos.X < 0) pos.X = 0;
++                else if (pos.X >= worldExtents.X) pos.X = worldExtents.X - 1;
++                if (pos.Y < 0) pos.Y = 0;
++                else if (pos.Y >= worldExtents.Y) pos.Y = worldExtents.Y - 1;
++
++                float height = World.PhysicsScene.GetWorldExtentsHeight(pos.X, pos.Y);
++
++                p0 = new Vector3(pos.X, pos.Y, height);
++                p1 = new Vector3();
++                p2 = new Vector3();
++
++                if ((pos.X + 1.0f) >= worldExtents.X)
++                    p1 = new Vector3(pos.X+1.0f, pos.Y, height);
++                else
++                    p1 = new Vector3(pos.X+1.0f, pos.Y, World.PhysicsScene.GetWorldExtentsHeight(pos.X+1.0f, pos.Y));
++
++                if ((pos.Y + 1.0f) >= worldExtents.Y)
++                    p2 = new Vector3(pos.X, pos.Y+1.0f, height);
++                else
++                    p2 = new Vector3(pos.X, pos.Y+1.0f, World.PhysicsScene.GetWorldExtentsHeight(pos.X, pos.Y+1.0f));
++            }
+             else
+-                p2 = new Vector3(pos.X, pos.Y + 1.0f,
+-                            (float)World.Heightmap[(int)pos.X, (int)(pos.Y + 1.0f)]);
++            {
++                // Clamp to valid position
++                if (pos.X < 0)
++                    pos.X = 0;
++                else if (pos.X >= World.Heightmap.Width)
++                    pos.X = World.Heightmap.Width - 1;
++                if (pos.Y < 0)
++                    pos.Y = 0;
++                else if (pos.Y >= World.Heightmap.Height)
++                    pos.Y = World.Heightmap.Height - 1;
++
++                //Find two points in addition to the position to define a plane
++                p0 = new Vector3(pos.X, pos.Y,
++                                         (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
++                p1 = new Vector3();
++                p2 = new Vector3();
++                if ((pos.X + 1.0f) >= World.Heightmap.Width)
++                    p1 = new Vector3(pos.X + 1.0f, pos.Y,
++                                (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
++                else
++                    p1 = new Vector3(pos.X + 1.0f, pos.Y,
++                                (float)World.Heightmap[(int)(pos.X + 1.0f), (int)pos.Y]);
++                if ((pos.Y + 1.0f) >= World.Heightmap.Height)
++                    p2 = new Vector3(pos.X, pos.Y + 1.0f,
++                                (float)World.Heightmap[(int)pos.X, (int)pos.Y]);
++                else
++                    p2 = new Vector3(pos.X, pos.Y + 1.0f,
++                                (float)World.Heightmap[(int)pos.X, (int)(pos.Y + 1.0f)]);
++            }
+ 
+             //Find normalized vectors from p0 to p1 and p0 to p2
+             Vector3 v0 = new Vector3(p1.X - p0.X, p1.Y - p0.Y, p1.Z - p0.Z);

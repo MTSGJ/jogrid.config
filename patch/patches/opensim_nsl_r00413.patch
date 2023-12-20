@@ -1,0 +1,252 @@
+diff -Nur opensim-/OpenSim/Region/ClientStack/LindenUDP/LLUDPServer.cs opensim/OpenSim/Region/ClientStack/LindenUDP/LLUDPServer.cs
+--- opensim-/OpenSim/Region/ClientStack/LindenUDP/LLUDPServer.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/ClientStack/LindenUDP/LLUDPServer.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -244,6 +244,8 @@
+ 
+             if (allowSplitting && packet.HasVariableBlocks)
+             {
++            // by Fumi.Iseki for thread crash of update object list  
++            try {
+                 byte[][] datas = packet.ToBytesMultiple();
+                 int packetCount = datas.Length;
+ 
+@@ -256,11 +258,23 @@
+                     SendPacketData(udpClient, data, packet.Type, category);
+                 }
+             }
++            catch (Exception e) {
++                m_log.Error("[LLUDPSERVER]: ERROR 1: packet.ToBytesMultiple() in SendPacket()");
++                return;
++            }
++            }
+             else
+             {
++            // by Fumi.Iseki for thread crash of update object list  
++            try {
+                 byte[] data = packet.ToBytes();
+                 SendPacketData(udpClient, data, packet.Type, category);
+             }
++            catch (Exception e) {
++                m_log.Error("[LLUDPSERVER]: ERROR 2: packet.ToBytesMultiple() in SendPacket()");
++                return;
++            }
++            }
+         }
+ 
+         public void SendPacketData(LLUDPClient udpClient, byte[] data, PacketType type, ThrottleOutPacketType category)
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/Scene.cs opensim/OpenSim/Region/Framework/Scenes/Scene.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/Scene.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/Scene.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -460,10 +460,10 @@
+ 
+             StatsReporter.SetObjectCapacity(objectCapacity);
+ 
+-            m_simulatorVersion = simulatorVersion
+-                + " (OS " + Util.GetOperatingSystemInformation() + ")"
+-                + " ChilTasks:" + m_seeIntoRegionFromNeighbor.ToString()
+-                + " PhysPrim:" + m_physicalPrim.ToString();
++            m_simulatorVersion = simulatorVersion;
++            //    + " (OS " + Util.GetOperatingSystemInformation() + ")"
++            //    + " ChilTasks:" + m_seeIntoRegionFromNeighbor.ToString()
++            //    + " PhysPrim:" + m_physicalPrim.ToString();
+ 
+             try
+             {
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/SceneGraph.cs opensim/OpenSim/Region/Framework/Scenes/SceneGraph.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/SceneGraph.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/SceneGraph.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -160,8 +160,14 @@
+             List<ScenePresence> updateScenePresences = GetScenePresences();
+             foreach (ScenePresence pres in updateScenePresences)
+             {
++            // Fumi.Iseki
++            try {
+                 pres.Update();
+             }
++            catch (System.NullReferenceException) {
++                m_log.ErrorFormat("[SCENE GRAPH] ERROR: System.NullReferenceException error occurred at UpdateEntities() by NSL");
++            }
++            }
+         }
+ 
+         protected internal float UpdatePhysics(double elapsed)
+diff -Nur opensim-/OpenSim/Region/Framework/Scenes/ScenePresence.cs opensim/OpenSim/Region/Framework/Scenes/ScenePresence.cs
+--- opensim-/OpenSim/Region/Framework/Scenes/ScenePresence.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/Framework/Scenes/ScenePresence.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -791,7 +791,20 @@
+                 pos.Y = crossedBorder.BorderLine.Z - 1;
+             }
+ 
++            // Fumi.Iseki for emergency position at cross region 
++            // getWorldExtents is added in OpenSim/Region/Physics/Manager/PhysicsScene.cs and OpenSim/Region/Physics/OdePlugin/OdePlugin.cs by Fumi.Iseki
++            Vector2 worldExtents = m_scene.PhysicsScene.getWorldExtents;
++            if (pos.X < 0 || pos.X >= (int)worldExtents.X || pos.Y < 0 || pos.Y >= (int)worldExtents.X || pos.Z < 0) {
++                m_log.WarnFormat("[SCENE PRESENCE]: MakeRootAgent() was given an illegal position of {0} for avatar {1}, {2}.", pos, Name, UUID);
++ 
++                if (pos.X < 0) pos.X = 0;
++                else if (pos.X >= (int)worldExtents.X) pos.X = (int)worldExtents.X - 1;
++                if (pos.Y < 0) pos.Y = 0;
++                else if (pos.Y >= (int)worldExtents.Y) pos.Y = (int)worldExtents.Y - 1;
++                if (pos.Z < 0) pos.Z = 0;
++            }
+ 
++/*
+             if (pos.X < 0 || pos.Y < 0 || pos.Z < 0)
+             {
+                 Vector3 emergencyPos = new Vector3(((int)Constants.RegionSize * 0.5f), ((int)Constants.RegionSize * 0.5f), 128);
+@@ -802,7 +815,7 @@
+ 
+                 pos = emergencyPos;
+             }
+-
++*/
+ 
+             float localAVHeight = 1.56f;
+             if (m_avHeight != 127.0f)
+@@ -1487,6 +1500,11 @@
+                     }
+                 }
+ 
++                // by Fumi.Iseki for Falling on Land or Object
++                if (!m_physicsActor.Flying && m_movementAnimation=="FALLDOWN" && (m_physicsActor.IsColliding || m_physicsActor.CollidingGround)) {
++                    update_movementflag = true;
++                }
++
+                 if (update_movementflag || (update_rotation && DCFlagKeyPressed))
+                 {
+ //                    m_log.DebugFormat("{0} {1}", update_movementflag, (update_rotation && DCFlagKeyPressed));
+@@ -2432,7 +2450,8 @@
+                 }
+ 
+                 // followed suggestion from mic bowman. reversed the two lines below.
+-                if (m_parentID == 0 && m_physicsActor != null || m_parentID != 0) // Check that we have a physics actor or we're sitting on something
++                // Fumi.Iseki for catch in the boundary
++                //if (m_parentID == 0 && m_physicsActor != null || m_parentID != 0) // Check that we have a physics actor or we're sitting on something
+                     CheckForBorderCrossing();
+                 CheckForSignificantMovement(); // sends update to the modules.
+             }
+@@ -2982,6 +3001,8 @@
+         /// </summary>
+         protected void CrossToNewRegion()
+         {
++            // Fumi.Iseki for emergency position
++            if (m_scene==null || m_physicsActor==null) return;
+             InTransit();
+             m_scene.CrossAgentToNewRegion(this, m_physicsActor.Flying);
+         }
+diff -Nur opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs
+--- opensim-/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/Physics/Manager/PhysicsScene.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -167,16 +167,30 @@
+             return false;
+         }
+ 
++
++        // Fumi.Iseki
++        // public Vector2 WorldExtents;
++        private Vector2 worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
++
++        public virtual Vector2 getWorldExtents
++        {
++            get { return worldExtents; }
++        }
++
+         public virtual void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
++            // Fumi.Iseki
++            worldExtents = new Vector2(extents.X, extents.Y);
+             return;
+         }
+ 
+         public virtual void UnCombine(PhysicsScene pScene)
+         {
+-            
++            // Fumi.Iseki
++            worldExtents = new Vector2((int)Constants.RegionSize, (int)Constants.RegionSize);
+         }
+ 
++
+         /// <summary>
+         /// Queue a raycast against the physics scene.
+         /// The provided callback method will be called when the raycast is complete
+diff -Nur opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs
+--- opensim-/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2009-10-15 13:43:40.000000000 +0900
++++ opensim/OpenSim/Region/Physics/OdePlugin/OdePlugin.cs	2009-10-15 13:43:20.000000000 +0900
+@@ -1557,6 +1557,14 @@
+ 
+         #endregion
+ 
++
++        // Fumi.Iseki for called form OpenSim/Region/Framework/Scenes/ScenePresence
++        public override Vector2 getWorldExtents
++        {
++            get { return WorldExtents;}
++        }
++        
++
+         public override void Combine(PhysicsScene pScene, Vector3 offset, Vector3 extents)
+         {
+             m_worldOffset = offset;
+@@ -1585,7 +1593,7 @@
+ 
+ 
+                         if ((int)x > WorldExtents.X || (int)y > WorldExtents.Y ||
+-                            (int)x < 0.001f || (int)y < 0.001f)
++                            (int)x < 0 || (int)y < 0)
+                             return 0;
+ 
+                         x = x - offsetX;
+@@ -2970,8 +2978,40 @@
+                 {
+                     foreach (OdeCharacter actor in _characters)
+                     {
+-                        if (actor != null)
++                        if (actor != null) {
+                             actor.UpdatePositionAndVelocity();
++
++                            // by Fumi.Iseki  for falling at SIM boundary
++                            d.Vector3 vec = d.BodyGetPosition(actor.Body);
++
++                            if ((vec.Y<0.0f || vec.Y>WorldExtents.Y-0.1f || vec.X<0.0f || vec.X>WorldExtents.X-0.1f) && !actor.IsColliding && !actor.CollidingGround) {
++                                if      (vec.Y<0.0f) { vec.Y = 0.1f; actor.Velocity.Y = 0;}
++                                else if (vec.Y>WorldExtents.Y-0.1f) { vec.Y = WorldExtents.Y-1.0f; actor.Velocity.Y = 0;}
++                                if      (vec.X<0.0f) { vec.X = 0.1f; actor.Velocity.X = 0;}
++                                else if (vec.X>WorldExtents.X-0.1f) { vec.X = WorldExtents.X-1.0f; actor.Velocity.X = 0;}
++                                
++                                float height = GetTerrainHeightAtXY(vec.X, vec.Y);
++                                //m_log.ErrorDebug("=============== ({0}, {1}, {2}) => {3}", vec.X, vec.Y, vec.Z, height);
++                                if (actor.Flying) {
++                                    if (vec.Z  <  height + 2) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        actor.Velocity.Z = 0;
++                                        actor.IsColliding = true;
++                                    }
++                                }
++                                else {
++                                    if (vec.Z < height + actor.Size.Z) {
++                                        vec.Z = height + actor.Size.Z/2;
++                                        actor.Velocity.Z = 0;
++                                        actor.IsColliding = true;
++                                        actor.CollidingGround = true;
++                                    }
++                                }
++
++                                actor.Position = new PhysicsVector(vec.X, vec.Y, vec.Z);
++                                d.BodySetPosition(actor.Body, vec.X, vec.Y, vec.Z);
++                            }
++                        }
+                     }
+                 }
+ 
+diff -Nur opensim-/bin/OpenMetaverse.dll.config opensim/bin/OpenMetaverse.dll.config
+--- opensim-/bin/OpenMetaverse.dll.config	2009-10-15 13:43:40.000000000 +0900
++++ opensim/bin/OpenMetaverse.dll.config	2009-10-15 13:43:20.000000000 +0900
+@@ -1,7 +1,7 @@
+ <configuration>
+     <dllmap os="osx" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1.dylib" />
+     <dllmap os="!windows,osx" cpu="x86-64,ia64" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1-x86_64" />
+-    <dllmap os="!windows,osx" cpu="x86" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1" />
++    <dllmap os="!windows,osx" cpu="x86" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1-i686" />
+     <dllmap os="!windows,osx" cpu="s390x" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1-s390x" />
+     <dllmap os="!windows,osx" cpu="ppc64" dll="openjpeg-dotnet.dll" target="libopenjpeg-dotnet-2.1.3.0-dotnet-1-ppc64" />
+ </configuration>

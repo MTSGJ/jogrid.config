@@ -1,0 +1,61 @@
+#!/bin/bash
+#
+# opensim_server  (OpenSim Server: Gridmode)
+#                                                by Fumi.Iseki
+#
+
+OSDIR=/usr/local/opensim_server 	# OpenSim をインストールしたディレクトリを指定
+MONO=/usr/local/bin/mono        	# mono へのパス
+SLEEPTM=5                       	# リスタート時のスリープ時間
+MAPEXPIRE=21                        # この日以前の maptile を削除
+#OPTION="--server"
+
+export PATH=/usr/local/bin:$PATH
+export MONO_THREADS_PER_CPU=1024
+
+
+start() {
+	export MONO_DNS=1
+    cd $OSDIR/bin
+	find maptiles -type f -mtime +$MAPEXPIRE | xargs rm > /dev/null 2>&1 
+	#
+    echo "OpenSim R.O.B.U.S.T. Server Start."
+	tmux new -d -s opensim_robust -c $OSDIR/bin "$MONO $OPTION Robust.exe"
+    echo "OpenSim Money Server Start."
+	tmux new -d -s opensim_money  -c $OSDIR/bin "$MONO $OPTION MoneyServer.exe"
+}     
+
+
+stop() {
+	tmux send-keys -t opensim_money   C-m "quit" C-m 
+	echo "OpenSim Money Server Stoped."
+	sleep 3
+	tmux send-keys  -t opensim_robust C-m "quit" C-m
+	echo "OpenSim R.O.B.U.S.T. Server Stoped."
+}
+
+
+restart() {
+    stop
+    sleep $SLEEPTM
+    start
+}
+
+
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart|reload)
+    restart
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?
+
