@@ -1,0 +1,1 @@
+# jogrid.config
